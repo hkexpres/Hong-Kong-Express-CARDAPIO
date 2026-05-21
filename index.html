@@ -574,7 +574,67 @@ body.has-cart{padding-bottom:78px}
   display:flex;align-items:center;justify-content:center;gap:6px;
 }
 .cart-checkout-btn:active{transform:scale(0.98)}
+
+/* ── MODAL CONFIRMAÇÃO ── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,0.88);backdrop-filter:blur(4px);
+  align-items:center;justify-content:center;padding:16px;
+}
+.modal-overlay.open{display:flex}
+.modal-box{
+  background:#111;border:1px solid #904040;border-radius:16px;
+  padding:24px 20px;max-width:360px;width:100%;
+  font-family:'Inter',sans-serif;
+  animation:mIn .18s ease;
+}
+@keyframes mIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+.modal-title{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:17px;
+  color:#F0E870;margin-bottom:6px;
+}
+.modal-sub{font-size:13px;color:#888;margin-bottom:16px;line-height:1.5}
+.modal-items{
+  background:#1a1a1a;border-radius:10px;padding:12px 14px;
+  margin-bottom:14px;max-height:200px;overflow-y:auto;
+}
+.modal-item{
+  display:flex;justify-content:space-between;align-items:baseline;
+  font-size:13px;padding:5px 0;color:#fff;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.modal-item:last-child{border-bottom:none}
+.modal-item-name{flex:1;margin-right:8px;color:#ccc}
+.modal-item-price{color:#F0E870;white-space:nowrap;font-weight:600}
+.modal-total-row{
+  display:flex;justify-content:space-between;
+  font-size:14px;font-weight:700;margin-bottom:18px;
+  padding:10px 14px;
+  background:rgba(240,232,112,0.08);
+  border-radius:8px;border:1px solid rgba(240,232,112,0.2);
+}
+.modal-total-row span:last-child{color:#F0E870}
+.modal-spinner{display:none;text-align:center;padding:10px;color:#888;font-size:13px}
+.modal-spinner.show{display:block}
+.modal-actions{display:flex;gap:10px}
+.modal-btn-back{
+  flex:1;padding:13px;border-radius:10px;
+  background:transparent;border:1px solid rgba(196,20,8,0.5);
+  color:#FF7070;font-size:14px;font-weight:600;cursor:pointer;
+  font-family:'Inter',sans-serif;transition:background .15s;
+}
+.modal-btn-back:hover{background:rgba(196,20,8,0.1)}
+.modal-btn-send{
+  flex:2;padding:13px;border-radius:10px;border:none;
+  background:#F0E870;color:#000;
+  font-size:14px;font-weight:700;cursor:pointer;
+  font-family:'Montserrat',sans-serif;letter-spacing:.02em;
+  transition:opacity .15s;
+}
+.modal-btn-send:hover{opacity:.9}
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -1071,6 +1131,24 @@ body.has-cart{padding-bottom:78px}
   </div>
 </div>
 
+<!-- MODAL CONFIRMAR PEDIDO -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal-box">
+    <div class="modal-title">Deseja adicionar algo mais?</div>
+    <div class="modal-sub">Confira seu pedido. Se estiver tudo certo, clique em Enviar.</div>
+    <div class="modal-items" id="modalItems"></div>
+    <div class="modal-total-row">
+      <span>Total</span>
+      <span id="modalTotal"></span>
+    </div>
+    <div class="modal-spinner" id="modalSpinner">Registrando pedido…</div>
+    <div class="modal-actions" id="modalActions">
+      <button class="modal-btn-back" id="modalBack" type="button">Adicionar mais</button>
+      <button class="modal-btn-send" id="modalSend" type="button">Enviar pedido →</button>
+    </div>
+  </div>
+</div>
+
 <!-- CART PANEL -->
 <div class="cart-fab" id="cartFab" aria-hidden="true">
   <div class="cart-bar" id="cartBar">
@@ -1316,21 +1394,81 @@ document.getElementById('cartClearBtn').addEventListener('click', e=>{
   e.stopPropagation()
   if(confirm('Limpar o pedido?')) clearCart()
 })
-document.getElementById('cartCheckoutBtn').addEventListener('click', e=>{
+// ── FIREBASE ──
+firebase.initializeApp({
+  apiKey: 'AIzaSyAdPXyBm9fAD7OgDYl2qD7Yhz4JlXq0JOs',
+  authDomain: 'adm-ventas-cardapio-hke.firebaseapp.com',
+  projectId: 'adm-ventas-cardapio-hke',
+  storageBucket: 'adm-ventas-cardapio-hke.firebasestorage.app',
+  messagingSenderId: '528788242727',
+  appId: '1:528788242727:web:9c4862eeab5c16db82a902'
+})
+const db = firebase.firestore()
+
+// ── MODAL ──
+const confirmModal = document.getElementById('confirmModal')
+const modalItemsEl = document.getElementById('modalItems')
+const modalTotalEl = document.getElementById('modalTotal')
+const modalSpinner = document.getElementById('modalSpinner')
+const modalActions = document.getElementById('modalActions')
+
+document.getElementById('cartCheckoutBtn').addEventListener('click', e => {
   e.stopPropagation()
   const keys = Object.keys(cart)
-  if(!keys.length) return
-  let msg = '*Olá! Gostaria de fazer um pedido:*\n\n'
-  let total = 0
-  keys.forEach(k=>{
+  if (!keys.length) return
+  modalItemsEl.innerHTML = ''
+  keys.forEach(k => {
     const it = cart[k]
-    const sub = it.qty * it.price
-    total += sub
-    msg += `• ${it.qty}x ${it.name} — ${fmtBRL(sub)}\n`
+    const row = document.createElement('div')
+    row.className = 'modal-item'
+    const nameEl = document.createElement('span')
+    nameEl.className = 'modal-item-name'
+    nameEl.textContent = it.qty + 'x ' + it.name
+    const priceEl = document.createElement('span')
+    priceEl.className = 'modal-item-price'
+    priceEl.textContent = fmtBRL(it.qty * it.price)
+    row.appendChild(nameEl)
+    row.appendChild(priceEl)
+    modalItemsEl.appendChild(row)
   })
+  const total = keys.reduce((a, k) => a + cart[k].qty * cart[k].price, 0)
+  modalTotalEl.textContent = fmtBRL(total)
+  confirmModal.classList.add('open')
+})
+
+document.getElementById('modalBack').addEventListener('click', () => {
+  confirmModal.classList.remove('open')
+})
+
+document.getElementById('modalSend').addEventListener('click', async () => {
+  const keys = Object.keys(cart)
+  if (!keys.length) return
+  modalActions.style.display = 'none'
+  modalSpinner.classList.add('show')
+
+  const items = keys.map(k => ({ name: cart[k].name, price: cart[k].price, qty: cart[k].qty }))
+  const total = items.reduce((a, it) => a + it.price * it.qty, 0)
+
+  try {
+    await db.collection('orders').add({
+      items,
+      total,
+      status: 'pending',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    })
+  } catch (err) {
+    console.error('Firestore error:', err)
+  }
+
+  let msg = '*Olá! Gostaria de fazer um pedido:*\n\n'
+  items.forEach(it => { msg += `• ${it.qty}x ${it.name} — ${fmtBRL(it.qty * it.price)}\n` })
   msg += `\n*Total: ${fmtBRL(total)}*`
-  const url = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg)
-  window.open(url, '_blank')
+  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank')
+
+  confirmModal.classList.remove('open')
+  modalActions.style.display = ''
+  modalSpinner.classList.remove('show')
+  clearCart()
 })
 </script>
 </body>

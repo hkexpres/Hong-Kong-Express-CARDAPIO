@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Hong Kong Express</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#000;--bg2:#111;--bg3:#1a1a1a;--bg4:#222;
+  --red:#904040;--red2:#FF7070;
+  --yellow:#F0E870;
+  --white:#fff;--gray:#AAAAAA;--gray2:#666;
+  --green:#2E7D32;--green2:#81C784;
+  --pending:#F0C060;--confirmed:#4CAF50;--cancelled:#F44336;
+}
+html,body{height:100%;background:var(--bg);color:var(--white);font-family:'Inter',sans-serif}
+button{cursor:pointer;font-family:'Inter',sans-serif}
+input{font-family:'Inter',sans-serif}
+
+/* ── LOGIN ── */
+#loginScreen{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at top,#180808,#000 60%);
+}
+.login-box{
+  background:var(--bg2);border:1px solid var(--red);border-radius:16px;
+  padding:36px 28px;width:100%;max-width:360px;
+}
+.login-logo{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:22px;
+  color:var(--yellow);text-align:center;margin-bottom:8px;letter-spacing:.04em;
+}
+.login-tagline{font-size:12px;color:var(--gray2);text-align:center;margin-bottom:28px}
+.login-box input{
+  display:block;width:100%;padding:13px 14px;margin-bottom:12px;
+  background:var(--bg3);border:1px solid #333;border-radius:10px;
+  color:var(--white);font-size:15px;outline:none;
+  transition:border .15s;
+}
+.login-box input:focus{border-color:var(--red)}
+.login-box input::placeholder{color:var(--gray2)}
+#loginBtn{
+  width:100%;padding:14px;border:none;border-radius:10px;
+  background:var(--yellow);color:#000;
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:15px;
+  letter-spacing:.04em;transition:opacity .15s;margin-top:4px;
+}
+#loginBtn:hover{opacity:.9}
+#loginError{
+  margin-top:12px;font-size:13px;color:var(--red2);
+  text-align:center;min-height:18px;
+}
+
+/* ── ADMIN PANEL ── */
+#adminPanel{display:none;flex-direction:column;min-height:100vh}
+.admin-header{
+  background:var(--bg2);border-bottom:1px solid rgba(144,64,64,0.3);
+  padding:0 20px;display:flex;align-items:center;gap:16px;
+  height:56px;position:sticky;top:0;z-index:100;
+}
+.admin-logo{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:15px;
+  color:var(--yellow);letter-spacing:.04em;white-space:nowrap;flex-shrink:0;
+}
+.admin-tabs{display:flex;gap:4px;flex:1;justify-content:center}
+.tab-btn{
+  padding:7px 16px;border-radius:8px;border:none;
+  background:transparent;color:var(--gray);font-size:13px;font-weight:600;
+  transition:all .15s;position:relative;
+}
+.tab-btn:hover{color:var(--white);background:rgba(255,255,255,0.06)}
+.tab-btn.active{background:rgba(240,232,112,0.12);color:var(--yellow)}
+.badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--red);color:#fff;font-size:10px;font-weight:700;
+  border-radius:10px;min-width:18px;height:18px;padding:0 4px;
+  margin-left:6px;vertical-align:middle;
+}
+.badge.hidden{display:none}
+#logoutBtn{
+  padding:7px 14px;border-radius:8px;border:1px solid #333;
+  background:transparent;color:var(--gray);font-size:12px;
+  transition:all .15s;flex-shrink:0;
+}
+#logoutBtn:hover{border-color:var(--red2);color:var(--red2)}
+
+.tab-content{flex:1;padding:20px;max-width:1200px;width:100%;margin:0 auto}
+
+/* ── DASHBOARD ── */
+.donuts-row{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;
+}
+@media(max-width:700px){.donuts-row{grid-template-columns:1fr}}
+.donut-card{
+  background:var(--bg2);border:1px solid rgba(144,64,64,0.3);border-radius:14px;
+  padding:18px 16px;
+}
+.donut-card-title{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;
+  letter-spacing:.15em;color:var(--red);margin-bottom:14px;text-transform:uppercase;
+}
+.donut-wrap{position:relative;width:160px;height:160px;margin:0 auto 14px}
+.donut-center-text{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;pointer-events:none;
+}
+.donut-center-val{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:16px;color:var(--white);
+}
+.donut-center-sub{font-size:11px;color:var(--gray);margin-top:2px}
+.donut-legend{display:flex;flex-direction:column;gap:5px}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray)}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.legend-name{flex:1}
+.legend-pct{font-weight:600;color:var(--white)}
+.donut-empty{text-align:center;color:var(--gray2);font-size:13px;padding:60px 0}
+
+.chart-card{
+  background:var(--bg2);border:1px solid rgba(144,64,64,0.3);border-radius:14px;
+  padding:20px 16px;
+}
+.chart-card-title{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;
+  letter-spacing:.15em;color:var(--red);margin-bottom:16px;text-transform:uppercase;
+}
+.chart-wrap{position:relative;height:260px}
+
+/* ── HOJE ── */
+.hoje-header-row{
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;
+}
+.hoje-title{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:14px;
+  letter-spacing:.12em;color:var(--yellow);text-transform:uppercase;
+}
+.counters-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+@media(max-width:500px){.counters-row{grid-template-columns:1fr}}
+.counter-card{
+  background:var(--bg2);border-radius:12px;padding:14px 16px;
+  border-left:4px solid transparent;
+}
+.counter-card.green{border-left-color:var(--confirmed)}
+.counter-card.yellow{border-left-color:var(--pending)}
+.counter-card.red{border-left-color:var(--cancelled)}
+.counter-label{font-size:12px;color:var(--gray);margin-bottom:6px}
+.counter-val{font-family:'Montserrat',sans-serif;font-weight:900;font-size:20px;color:var(--white)}
+.counter-sub{font-size:12px;color:var(--gray);margin-top:3px}
+
+.orders-section-title{
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:.12em;color:var(--gray);text-transform:uppercase;margin-bottom:12px;
+}
+.orders-list{display:flex;flex-direction:column;gap:10px}
+.order-card{
+  background:var(--bg2);border:1px solid rgba(255,255,255,0.07);border-radius:12px;
+  padding:14px 16px;
+}
+.order-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.order-time{font-size:13px;color:var(--gray);font-weight:600}
+.order-total{font-family:'Montserrat',sans-serif;font-weight:700;font-size:15px;color:var(--white)}
+.order-status{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:3px 10px;border-radius:20px;
+}
+.status-pending{background:rgba(240,192,96,0.15);color:var(--pending);border:1px solid rgba(240,192,96,0.3)}
+.status-confirmed{background:rgba(76,175,80,0.12);color:var(--confirmed);border:1px solid rgba(76,175,80,0.25)}
+.status-cancelled{background:rgba(244,67,54,0.12);color:var(--cancelled);border:1px solid rgba(244,67,54,0.25)}
+.order-items{font-size:13px;color:var(--gray);margin-bottom:10px;line-height:1.6}
+.order-actions{display:flex;gap:8px}
+.btn-confirm{
+  flex:1;padding:9px;border-radius:8px;border:none;
+  background:rgba(76,175,80,0.15);color:var(--confirmed);
+  font-size:13px;font-weight:600;transition:background .15s;
+  border:1px solid rgba(76,175,80,0.3);
+}
+.btn-confirm:hover{background:rgba(76,175,80,0.25)}
+.btn-cancel{
+  flex:1;padding:9px;border-radius:8px;border:none;
+  background:rgba(244,67,54,0.1);color:var(--cancelled);
+  font-size:13px;font-weight:600;transition:background .15s;
+  border:1px solid rgba(244,67,54,0.25);
+}
+.btn-cancel:hover{background:rgba(244,67,54,0.2)}
+.empty-state{text-align:center;color:var(--gray2);font-size:14px;padding:40px 0}
+
+/* ── DETALHE ── */
+.filters-row{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:20px;
+  background:var(--bg2);border-radius:12px;padding:14px 16px;
+  border:1px solid rgba(144,64,64,0.2);
+}
+.filters-row label{font-size:13px;color:var(--gray);display:flex;align-items:center;gap:8px}
+.filters-row input[type=date]{
+  padding:8px 10px;background:var(--bg3);border:1px solid #333;border-radius:8px;
+  color:var(--white);font-size:13px;outline:none;
+  color-scheme:dark;
+}
+.filters-row input[type=date]:focus{border-color:var(--red)}
+.btn-filter{
+  padding:9px 18px;border-radius:8px;border:none;
+  background:var(--red);color:#fff;font-size:13px;font-weight:600;
+  transition:opacity .15s;
+}
+.btn-filter:hover{opacity:.85}
+.btn-export{
+  padding:9px 18px;border-radius:8px;border:1px solid rgba(240,232,112,0.4);
+  background:transparent;color:var(--yellow);font-size:13px;font-weight:600;
+  transition:background .15s;margin-left:auto;
+}
+.btn-export:hover{background:rgba(240,232,112,0.08)}
+
+.detalhe-table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{
+  padding:10px 12px;text-align:left;
+  font-family:'Montserrat',sans-serif;font-size:10px;font-weight:700;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--gray);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+  background:var(--bg2);
+}
+tbody td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:var(--white)}
+tbody tr:hover td{background:rgba(255,255,255,0.03)}
+.subtotal-row td{
+  background:rgba(240,232,112,0.05);color:var(--yellow);
+  font-weight:600;font-size:12px;
+  border-top:1px solid rgba(240,232,112,0.15);
+  border-bottom:1px solid rgba(240,232,112,0.15);
+}
+.grand-total-row td{
+  background:rgba(240,232,112,0.1);color:var(--yellow);
+  font-family:'Montserrat',sans-serif;font-weight:900;
+  border-top:2px solid rgba(240,232,112,0.3);
+}
+.summary-section{
+  display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px;
+}
+@media(max-width:600px){.summary-section{grid-template-columns:1fr}}
+.summary-card{
+  background:var(--bg2);border:1px solid rgba(144,64,64,0.2);border-radius:12px;
+  padding:16px;
+}
+.summary-card-title{
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:10px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--gray);margin-bottom:12px;
+}
+.summary-table{width:100%;font-size:13px}
+.summary-table td{padding:5px 0;color:var(--white)}
+.summary-table td:last-child{text-align:right;color:var(--yellow);font-weight:600}
+.summary-table tr:last-child td{
+  border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;
+  font-family:'Montserrat',sans-serif;font-weight:900;color:var(--yellow);
+}
+
+/* loading */
+.spinner{text-align:center;color:var(--gray);padding:40px;font-size:13px}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">🇭🇰 HKE Admin</div>
+    <div class="login-tagline">Painel de gestão · Hong Kong Express</div>
+    <input type="email" id="loginEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="loginPassword" placeholder="Senha" autocomplete="current-password">
+    <button id="loginBtn">Entrar</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="adminPanel">
+  <header class="admin-header">
+    <div class="admin-logo">🍜 HKE Admin</div>
+    <nav class="admin-tabs">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="hoje">Hoje <span class="badge hidden" id="pendenteBadge">0</span></button>
+      <button class="tab-btn" data-tab="detalhe">Detalhe</button>
+    </nav>
+    <button id="logoutBtn">Sair</button>
+  </header>
+
+  <!-- DASHBOARD -->
+  <div class="tab-content" id="tab-dashboard">
+    <div class="donuts-row">
+      <div class="donut-card">
+        <div class="donut-card-title">Semana Atual</div>
+        <div class="donut-wrap">
+          <canvas id="donutSemana"></canvas>
+          <div class="donut-center-text" id="centerSemana"></div>
+        </div>
+        <div class="donut-legend" id="legendSemana"></div>
+      </div>
+      <div class="donut-card">
+        <div class="donut-card-title">Mês Atual</div>
+        <div class="donut-wrap">
+          <canvas id="donutMes"></canvas>
+          <div class="donut-center-text" id="centerMes"></div>
+        </div>
+        <div class="donut-legend" id="legendMes"></div>
+      </div>
+      <div class="donut-card">
+        <div class="donut-card-title">Mês Anterior</div>
+        <div class="donut-wrap">
+          <canvas id="donutMesAnterior"></canvas>
+          <div class="donut-center-text" id="centerMesAnterior"></div>
+        </div>
+        <div class="donut-legend" id="legendMesAnterior"></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">Evolução Mensal — últimos 12 meses</div>
+      <div class="chart-wrap">
+        <canvas id="lineChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOJE -->
+  <div class="tab-content" id="tab-hoje" style="display:none">
+    <div class="hoje-header-row">
+      <div class="hoje-title">Hoje · <span id="hojeDate"></span></div>
+    </div>
+    <div class="counters-row">
+      <div class="counter-card green">
+        <div class="counter-label">✅ Faturado hoje</div>
+        <div class="counter-val" id="cFaturadoVal">R$ 0,00</div>
+        <div class="counter-sub" id="cFaturadoPlatos">0 platos</div>
+      </div>
+      <div class="counter-card yellow">
+        <div class="counter-label">⏳ Pendentes</div>
+        <div class="counter-val" id="cPendentesVal">0</div>
+        <div class="counter-sub">pedidos</div>
+      </div>
+      <div class="counter-card red">
+        <div class="counter-label">❌ Cancelados</div>
+        <div class="counter-val" id="cCanceladosVal">0</div>
+        <div class="counter-sub" id="cCanceladosBRL">R$ 0,00</div>
+      </div>
+    </div>
+    <div class="orders-section-title">Pedidos do dia</div>
+    <div class="orders-list" id="ordersList">
+      <div class="spinner">Carregando…</div>
+    </div>
+  </div>
+
+  <!-- DETALHE -->
+  <div class="tab-content" id="tab-detalhe" style="display:none">
+    <div class="filters-row">
+      <label>De: <input type="date" id="filterFrom"></label>
+      <label>Até: <input type="date" id="filterTo"></label>
+      <button class="btn-filter" id="filterBtn">Filtrar</button>
+      <button class="btn-export" id="exportBtn">📥 Exportar Excel</button>
+    </div>
+    <div id="detalheContent"><div class="spinner">Selecione um período e clique em Filtrar.</div></div>
+  </div>
+</div>
+
+<script>
+// ── FIREBASE INIT ──
+firebase.initializeApp({
+  apiKey: 'AIzaSyAdPXyBm9fAD7OgDYl2qD7Yhz4JlXq0JOs',
+  authDomain: 'adm-ventas-cardapio-hke.firebaseapp.com',
+  projectId: 'adm-ventas-cardapio-hke',
+  storageBucket: 'adm-ventas-cardapio-hke.firebasestorage.app',
+  messagingSenderId: '528788242727',
+  appId: '1:528788242727:web:9c4862eeab5c16db82a902'
+})
+const auth = firebase.auth()
+const db   = firebase.firestore()
+
+// ── HELPERS ──
+function fmtBRL(v) {
+  return 'R$ ' + (v || 0).toFixed(2).replace('.', ',')
+}
+function fmtDate(ts) {
+  if (!ts) return '—'
+  const d = ts.toDate ? ts.toDate() : new Date(ts)
+  return d.toLocaleDateString('pt-BR')
+}
+function fmtTime(ts) {
+  if (!ts) return '—'
+  const d = ts.toDate ? ts.toDate() : new Date(ts)
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+function startOfDay(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+function endOfDay(date) {
+  const d = new Date(date)
+  d.setHours(23, 59, 59, 999)
+  return d
+}
+
+// ── DISH GROUPING ──
+const GROUPS = [
+  { name: 'Chow Fan',       test: n => n.includes('chow fan') },
+  { name: 'Chow Mein',      test: n => n.includes('chow mein') },
+  { name: 'Chop Suey',      test: n => n.includes('chop suey') },
+  { name: 'Shiitake Agrid.',test: n => n.includes('shiitake') },
+  { name: 'Carne Teriyaki', test: n => n.includes('teriyaki') },
+  { name: 'Agripicante',    test: n => n.includes('agripicante') },
+  { name: 'Kung Pao',       test: n => n.includes('kung pao') },
+  { name: 'Gyoza',          test: n => n.includes('gyoza') },
+  { name: 'Combos',         test: n => n.startsWith('combo') },
+  { name: 'Bebidas & Molhos', test: n => n.includes('cerveja') || n.includes('refrigerante') || n.includes('molho') || n.includes('salsa') },
+]
+function groupDish(name) {
+  const n = name.toLowerCase()
+  for (const g of GROUPS) { if (g.test(n)) return g.name }
+  return 'Outros'
+}
+
+// ── DONUT COLORS ──
+const GROUP_COLORS = [
+  '#F0E870','#FF7070','#81C784','#64B5F6','#FFB74D',
+  '#BA68C8','#4DB6AC','#FF8A65','#90A4AE','#F06292','#A5D6A7'
+]
+
+// ── CHART INSTANCES ──
+let chartSemana = null, chartMes = null, chartMesAnterior = null, chartLine = null
+
+// ── AUTH ──
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const email = document.getElementById('loginEmail').value.trim()
+  const pass  = document.getElementById('loginPassword').value
+  const errEl = document.getElementById('loginError')
+  errEl.textContent = ''
+  if (!email || !pass) { errEl.textContent = 'Preencha email e senha.'; return }
+  try {
+    await auth.signInWithEmailAndPassword(email, pass)
+  } catch (e) {
+    errEl.textContent = 'Email ou senha incorretos.'
+  }
+})
+document.getElementById('loginPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('loginBtn').click()
+})
+document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut())
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    document.getElementById('loginScreen').style.display = 'none'
+    document.getElementById('adminPanel').style.display = 'flex'
+    document.getElementById('adminPanel').style.flexDirection = 'column'
+    initAdmin()
+  } else {
+    document.getElementById('loginScreen').style.display = 'flex'
+    document.getElementById('adminPanel').style.display = 'none'
+    if (hojeUnsubscribe) { hojeUnsubscribe(); hojeUnsubscribe = null }
+  }
+})
+
+// ── TABS ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
+    btn.classList.add('active')
+    document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none')
+    document.getElementById('tab-' + tab).style.display = 'block'
+  })
+})
+
+// ── INIT ──
+let hojeUnsubscribe = null
+
+function initAdmin() {
+  // set today's date label
+  document.getElementById('hojeDate').textContent =
+    new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+
+  // set default detalhe dates (current month)
+  const now = new Date()
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+  document.getElementById('filterFrom').value = firstDay.toISOString().split('T')[0]
+  document.getElementById('filterTo').value   = now.toISOString().split('T')[0]
+
+  loadDashboard()
+  listenHoje()
+}
+
+// ── DASHBOARD ──
+async function loadDashboard() {
+  const now   = new Date()
+
+  // Semana: Mon to today
+  const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1
+  const weekStart = new Date(now); weekStart.setDate(now.getDate() - dayOfWeek); weekStart.setHours(0,0,0,0)
+
+  // Mês atual: 1st to now
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  // Mês anterior
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const prevMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
+
+  // 12 meses atrás
+  const twelveAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+
+  try {
+    const snap = await db.collection('orders')
+      .where('status', '==', 'confirmed')
+      .where('createdAt', '>=', twelveAgo)
+      .get()
+
+    const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+    const semanaOrders      = orders.filter(o => o.createdAt.toDate() >= weekStart)
+    const mesOrders         = orders.filter(o => o.createdAt.toDate() >= monthStart)
+    const prevMesOrders     = orders.filter(o => {
+      const d = o.createdAt.toDate()
+      return d >= prevMonthStart && d <= prevMonthEnd
+    })
+
+    buildDonut('donutSemana', 'centerSemana', 'legendSemana', semanaOrders)
+    buildDonut('donutMes', 'centerMes', 'legendMes', mesOrders)
+    buildDonut('donutMesAnterior', 'centerMesAnterior', 'legendMesAnterior', prevMesOrders)
+    buildLineChart(orders)
+  } catch(e) {
+    console.error('Dashboard error:', e)
+  }
+}
+
+function calcGroups(orders) {
+  const groups = {}
+  let totalPlatos = 0
+  let totalBRL = 0
+  orders.forEach(o => {
+    ;(o.items || []).forEach(it => {
+      const g = groupDish(it.name)
+      if (!groups[g]) groups[g] = { qty: 0, total: 0 }
+      groups[g].qty   += it.qty
+      groups[g].total += it.qty * it.price
+      totalPlatos     += it.qty
+      totalBRL        += it.qty * it.price
+    })
+  })
+  return { groups, totalPlatos, totalBRL }
+}
+
+function buildDonut(canvasId, centerId, legendId, orders) {
+  const { groups, totalPlatos, totalBRL } = calcGroups(orders)
+  const centerEl = document.getElementById(centerId)
+  const legendEl = document.getElementById(legendId)
+
+  if (totalPlatos === 0) {
+    centerEl.innerHTML = '<span style="color:#666;font-size:12px">Sem dados</span>'
+    legendEl.innerHTML = ''
+    // draw empty grey ring
+    const ctx = document.getElementById(canvasId).getContext('2d')
+    if (chartSemana && canvasId === 'donutSemana') { chartSemana.destroy(); chartSemana = null }
+    if (chartMes && canvasId === 'donutMes') { chartMes.destroy(); chartMes = null }
+    if (chartMesAnterior && canvasId === 'donutMesAnterior') { chartMesAnterior.destroy(); chartMesAnterior = null }
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: { datasets: [{ data: [1], backgroundColor: ['#222'], borderWidth: 0 }] },
+      options: { cutout: '72%', plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+    })
+    return
+  }
+
+  const sorted = Object.entries(groups).sort((a, b) => b[1].qty - a[1].qty)
+  const labels = sorted.map(([g]) => g)
+  const data   = sorted.map(([, v]) => v.qty)
+  const colors = labels.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
+
+  centerEl.innerHTML = `
+    <div class="donut-center-val">${fmtBRL(totalBRL)}</div>
+    <div class="donut-center-sub">${totalPlatos} platos</div>
+  `
+
+  legendEl.innerHTML = sorted.map(([g, v], i) => `
+    <div class="legend-item">
+      <span class="legend-dot" style="background:${colors[i]}"></span>
+      <span class="legend-name">${g}</span>
+      <span class="legend-pct">${Math.round(v.qty / totalPlatos * 100)}%</span>
+    </div>
+  `).join('')
+
+  const ctx = document.getElementById(canvasId).getContext('2d')
+  // destroy previous if exists
+  const chartVar = canvasId === 'donutSemana' ? chartSemana : canvasId === 'donutMes' ? chartMes : chartMesAnterior
+  if (chartVar) chartVar.destroy()
+
+  const newChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: colors,
+        borderColor: '#111',
+        borderWidth: 2,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      cutout: '72%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx2 => ` ${ctx2.label}: ${ctx2.raw} platos (${Math.round(ctx2.raw / totalPlatos * 100)}%)`
+          }
+        }
+      }
+    }
+  })
+  if (canvasId === 'donutSemana')      chartSemana = newChart
+  else if (canvasId === 'donutMes')    chartMes = newChart
+  else                                  chartMesAnterior = newChart
+}
+
+function buildLineChart(orders) {
+  const now = new Date()
+  const months = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }) })
+  }
+
+  const brl = months.map(m => {
+    const mo = orders.filter(o => {
+      const d = o.createdAt.toDate()
+      return d.getFullYear() === m.year && d.getMonth() === m.month
+    })
+    return mo.reduce((a, o) => a + (o.total || 0), 0)
+  })
+  const qty = months.map(m => {
+    const mo = orders.filter(o => {
+      const d = o.createdAt.toDate()
+      return d.getFullYear() === m.year && d.getMonth() === m.month
+    })
+    return mo.reduce((a, o) => a + (o.items || []).reduce((b, it) => b + it.qty, 0), 0)
+  })
+
+  if (chartLine) chartLine.destroy()
+  const ctx = document.getElementById('lineChart').getContext('2d')
+  chartLine = new Chart(ctx, {
+    data: {
+      labels: months.map(m => m.label),
+      datasets: [
+        {
+          type: 'line',
+          label: 'Facturação (R$)',
+          data: brl,
+          borderColor: '#F0E870',
+          backgroundColor: 'rgba(240,232,112,0.08)',
+          tension: 0.3,
+          fill: true,
+          pointBackgroundColor: '#F0E870',
+          yAxisID: 'yBRL'
+        },
+        {
+          type: 'line',
+          label: 'Qtd. platos',
+          data: qty,
+          borderColor: '#64B5F6',
+          backgroundColor: 'rgba(100,181,246,0.06)',
+          tension: 0.3,
+          fill: true,
+          pointBackgroundColor: '#64B5F6',
+          yAxisID: 'yQty',
+          borderDash: [4, 4]
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        yBRL: {
+          position: 'left',
+          ticks: { color: '#F0E870', font: { size: 11 }, callback: v => 'R$' + v.toFixed(0) },
+          grid: { color: 'rgba(255,255,255,0.05)' }
+        },
+        yQty: {
+          position: 'right',
+          ticks: { color: '#64B5F6', font: { size: 11 } },
+          grid: { display: false }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#aaa', font: { size: 12 }, boxWidth: 16 }
+        },
+        tooltip: {
+          backgroundColor: '#1a1a1a',
+          borderColor: '#333',
+          borderWidth: 1,
+          titleColor: '#fff',
+          bodyColor: '#ccc'
+        }
+      }
+    }
+  })
+}
+
+// ── HOJE (realtime) ──
+function listenHoje() {
+  if (hojeUnsubscribe) hojeUnsubscribe()
+  const today = startOfDay(new Date())
+  const todayEnd = endOfDay(new Date())
+
+  hojeUnsubscribe = db.collection('orders')
+    .where('createdAt', '>=', today)
+    .where('createdAt', '<=', todayEnd)
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(snap => {
+      const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      renderHoje(orders)
+    }, err => console.error('Hoje listener:', err))
+}
+
+function renderHoje(orders) {
+  // counters
+  const confirmed  = orders.filter(o => o.status === 'confirmed')
+  const pending    = orders.filter(o => o.status === 'pending')
+  const cancelled  = orders.filter(o => o.status === 'cancelled')
+
+  const faturadoBRL    = confirmed.reduce((a, o) => a + (o.total || 0), 0)
+  const faturadoPlatos = confirmed.reduce((a, o) => a + (o.items || []).reduce((b, it) => b + it.qty, 0), 0)
+  const canceladoBRL   = cancelled.reduce((a, o) => a + (o.total || 0), 0)
+
+  document.getElementById('cFaturadoVal').textContent    = fmtBRL(faturadoBRL)
+  document.getElementById('cFaturadoPlatos').textContent = faturadoPlatos + ' platos'
+  document.getElementById('cPendentesVal').textContent   = pending.length
+  document.getElementById('cCanceladosVal').textContent  = cancelled.length
+  document.getElementById('cCanceladosBRL').textContent  = fmtBRL(canceladoBRL)
+
+  // badge
+  const badge = document.getElementById('pendenteBadge')
+  if (pending.length > 0) {
+    badge.textContent = pending.length
+    badge.classList.remove('hidden')
+  } else {
+    badge.classList.add('hidden')
+  }
+
+  // order cards
+  const list = document.getElementById('ordersList')
+  if (orders.length === 0) {
+    list.innerHTML = '<div class="empty-state">Nenhum pedido hoje ainda.</div>'
+    return
+  }
+
+  list.innerHTML = orders.map(o => {
+    const time     = fmtTime(o.createdAt)
+    const itemsStr = (o.items || []).map(it => `${it.qty}x ${it.name}`).join(' · ')
+    const statusClass = o.status === 'confirmed' ? 'status-confirmed' : o.status === 'cancelled' ? 'status-cancelled' : 'status-pending'
+    const statusLabel = o.status === 'confirmed' ? '● CONFIRMADO' : o.status === 'cancelled' ? '● CANCELADO' : '● PENDENTE'
+    const actions = o.status === 'pending' ? `
+      <div class="order-actions">
+        <button class="btn-confirm" onclick="updateStatus('${o.id}','confirmed')">✔ Confirmar</button>
+        <button class="btn-cancel"  onclick="updateStatus('${o.id}','cancelled')">✕ Cancelar</button>
+      </div>` : ''
+    return `
+      <div class="order-card">
+        <div class="order-card-header">
+          <span class="order-time">${time}</span>
+          <span class="order-total">${fmtBRL(o.total)}</span>
+          <span class="order-status ${statusClass}">${statusLabel}</span>
+        </div>
+        <div class="order-items">${itemsStr}</div>
+        ${actions}
+      </div>`
+  }).join('')
+}
+
+async function updateStatus(id, status) {
+  try {
+    await db.collection('orders').doc(id).update({ status })
+  } catch(e) {
+    console.error('updateStatus:', e)
+  }
+}
+
+// ── DETALHE ──
+let detalheOrders = []
+
+document.getElementById('filterBtn').addEventListener('click', loadDetalhe)
+document.getElementById('exportBtn').addEventListener('click', exportExcel)
+
+async function loadDetalhe() {
+  const from = document.getElementById('filterFrom').value
+  const to   = document.getElementById('filterTo').value
+  const el   = document.getElementById('detalheContent')
+  if (!from || !to) { el.innerHTML = '<div class="empty-state">Selecione o período.</div>'; return }
+
+  el.innerHTML = '<div class="spinner">Carregando…</div>'
+
+  const fromDate = startOfDay(new Date(from + 'T00:00:00'))
+  const toDate   = endOfDay(new Date(to + 'T00:00:00'))
+
+  try {
+    const snap = await db.collection('orders')
+      .where('status', '==', 'confirmed')
+      .where('createdAt', '>=', fromDate)
+      .where('createdAt', '<=', toDate)
+      .orderBy('createdAt', 'asc')
+      .get()
+
+    detalheOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    renderDetalhe(detalheOrders)
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state">Erro ao carregar: ${e.message}</div>`
+    console.error(e)
+  }
+}
+
+function renderDetalhe(orders) {
+  const el = document.getElementById('detalheContent')
+  if (!orders.length) {
+    el.innerHTML = '<div class="empty-state">Nenhum pedido confirmado no período.</div>'
+    return
+  }
+
+  // build rows: one row per item in each order
+  const rows = []
+  orders.forEach(o => {
+    ;(o.items || []).forEach(it => {
+      rows.push({
+        date: fmtDate(o.createdAt),
+        time: fmtTime(o.createdAt),
+        dish: it.name,
+        qty: it.qty,
+        unitPrice: it.price,
+        subtotal: it.qty * it.price,
+        orderId: o.id,
+        orderTotal: o.total
+      })
+    })
+  })
+
+  // group by date for subtotals
+  const byDate = {}
+  rows.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = []
+    byDate[r.date].push(r)
+  })
+
+  let tableRows = ''
+  let grandTotal = 0
+  Object.entries(byDate).sort().forEach(([date, dateRows]) => {
+    const dateSubtotal = dateRows.reduce((a, r) => a + r.subtotal, 0)
+    grandTotal += dateSubtotal
+    dateRows.forEach(r => {
+      tableRows += `<tr>
+        <td>${r.date}</td>
+        <td>${r.time}</td>
+        <td>${r.dish}</td>
+        <td style="text-align:center">${r.qty}</td>
+        <td style="text-align:right">${fmtBRL(r.unitPrice)}</td>
+        <td style="text-align:right;color:#F0E870;font-weight:600">${fmtBRL(r.subtotal)}</td>
+      </tr>`
+    })
+    tableRows += `<tr class="subtotal-row">
+      <td colspan="5" style="text-align:right">Subtotal ${date}</td>
+      <td style="text-align:right">${fmtBRL(dateSubtotal)}</td>
+    </tr>`
+  })
+  tableRows += `<tr class="grand-total-row">
+    <td colspan="5" style="text-align:right">TOTAL GERAL</td>
+    <td style="text-align:right">${fmtBRL(grandTotal)}</td>
+  </tr>`
+
+  // summary by dish
+  const byDish = {}
+  rows.forEach(r => {
+    if (!byDish[r.dish]) byDish[r.dish] = { qty: 0, total: 0 }
+    byDish[r.dish].qty   += r.qty
+    byDish[r.dish].total += r.subtotal
+  })
+  const dishRows = Object.entries(byDish)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([dish, v]) => `<tr>
+      <td>${dish}</td>
+      <td>${v.qty}</td>
+      <td style="text-align:right">${fmtBRL(v.total)}</td>
+    </tr>`)
+    .join('')
+
+  el.innerHTML = `
+    <div class="detalhe-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th><th>Hora</th><th>Prato</th>
+            <th style="text-align:center">Qtd</th>
+            <th style="text-align:right">Unit.</th>
+            <th style="text-align:right">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    <div class="summary-section">
+      <div class="summary-card">
+        <div class="summary-card-title">Subtotal por prato</div>
+        <table class="summary-table">
+          <thead><tr><td style="color:#666">Prato</td><td style="color:#666">Qtd</td><td style="text-align:right;color:#666">Total</td></tr></thead>
+          <tbody>${dishRows}<tr><td colspan="2"><strong>TOTAL</strong></td><td style="text-align:right">${fmtBRL(grandTotal)}</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `
+}
+
+function exportExcel() {
+  if (!detalheOrders.length) { alert('Filtre um período primeiro.'); return }
+
+  const rows = [['Data', 'Hora', 'Prato', 'Qtd', 'Preço Unit.', 'Subtotal']]
+  const byDate = {}
+  detalheOrders.forEach(o => {
+    const date = fmtDate(o.createdAt)
+    const time = fmtTime(o.createdAt)
+    ;(o.items || []).forEach(it => {
+      rows.push([date, time, it.name, it.qty, it.price, it.qty * it.price])
+      if (!byDate[date]) byDate[date] = 0
+      byDate[date] += it.qty * it.price
+    })
+    rows.push([`--- Subtotal ${date} ---`, '', '', '', '', byDate[date]])
+  })
+  const grandTotal = detalheOrders.reduce((a, o) => a + (o.total || 0), 0)
+  rows.push(['TOTAL GERAL', '', '', '', '', grandTotal])
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 35 }, { wch: 6 }, { wch: 12 }, { wch: 12 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Pedidos')
+
+  const from = document.getElementById('filterFrom').value
+  const to   = document.getElementById('filterTo').value
+  XLSX.writeFile(wb, `HKE_pedidos_${from}_${to}.xlsx`)
+}
+</script>
+</body>
+</html>
