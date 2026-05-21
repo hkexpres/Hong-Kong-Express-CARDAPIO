@@ -486,10 +486,12 @@ body.has-cart{padding-bottom:78px}
   display:block;margin-top:1px;
 }
 .cart-bar-arrow{
-  color:var(--amarillo);font-size:18px;
-  transition:transform 0.25s ease;flex-shrink:0;
+  color:var(--amarillo);font-size:12px;font-family:'Montserrat',sans-serif;
+  font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+  transition:opacity 0.25s ease;flex-shrink:0;text-align:right;line-height:1.3;
+  white-space:nowrap;
 }
-.cart-fab.open .cart-bar-arrow{transform:rotate(180deg)}
+.cart-fab.open .cart-bar-arrow{opacity:0.5}
 
 .cart-body{
   max-height:0;overflow:hidden;
@@ -1075,11 +1077,11 @@ body.has-cart{padding-bottom:78px}
     <div class="cart-bar-left">
       <div class="cart-icon">🛒<span class="cart-count" id="cartCount">0</span></div>
       <div>
-        <span class="cart-bar-label">Seu pedido</span>
+        <span class="cart-bar-label">Total</span>
         <span class="cart-bar-total" id="cartBarTotal">R$ 0,00</span>
       </div>
     </div>
-    <span class="cart-bar-arrow">▾</span>
+    <span class="cart-bar-arrow">Ver seu pedido ▾</span>
   </div>
   <div class="cart-body">
     <div class="cart-items" id="cartItems"></div>
