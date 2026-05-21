@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · Hong Kong Express</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080404;--bg2:#110808;--bg3:#1a1010;--bg4:#220e0e;
+  --gold:#F0E870;--red:#904040;--green:#2E7D32;--wh:#fff;
+  --gr:#888;--gr2:#555;--border:rgba(255,255,255,0.07);
+  --gold-glow:rgba(240,232,112,0.15);
+}
+body{background:var(--bg);color:var(--wh);font-family:'Inter',sans-serif;min-height:100vh}
+
+/* ── LOGIN ── */
+#loginScreen{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at center top,#2a0a0a 0%,var(--bg) 70%);
+  padding:20px;
+}
+.login-card{
+  background:var(--bg2);border:1px solid rgba(144,64,64,0.4);
+  border-radius:18px;padding:40px 32px;width:100%;max-width:380px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.6);
+}
+.login-logo{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:13px;
+  color:var(--gold);letter-spacing:0.15em;text-transform:uppercase;
+  text-align:center;margin-bottom:6px;
+}
+.login-title{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:22px;
+  color:var(--wh);text-align:center;margin-bottom:30px;
+}
+.login-field{margin-bottom:14px}
+.login-field label{display:block;font-size:11px;color:var(--gr);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px}
+.login-field input{
+  width:100%;padding:12px 14px;border-radius:10px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--border);
+  color:var(--wh);font-family:'Inter',sans-serif;font-size:14px;
+  outline:none;transition:border-color 0.2s;
+}
+.login-field input:focus{border-color:rgba(240,232,112,0.5)}
+.login-btn{
+  width:100%;padding:14px;border-radius:10px;border:none;margin-top:8px;
+  background:linear-gradient(135deg,var(--red),#6a2020);color:var(--wh);
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:14px;
+  letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;
+  transition:opacity 0.2s;
+}
+.login-btn:hover{opacity:0.85}
+.login-btn:disabled{opacity:0.5;cursor:default}
+.login-error{
+  font-size:12px;color:#ff8080;text-align:center;
+  margin-top:12px;min-height:18px;
+}
+
+/* ── ADMIN LAYOUT ── */
+#adminScreen{display:none}
+#adminScreen.show{display:block}
+
+.adm-header{
+  background:var(--bg2);border-bottom:1px solid rgba(144,64,64,0.3);
+  padding:0 20px;position:sticky;top:0;z-index:50;
+  display:flex;align-items:center;gap:0;
+}
+.adm-brand{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:12px;
+  color:var(--gold);letter-spacing:0.12em;text-transform:uppercase;
+  padding:16px 0;white-space:nowrap;margin-right:24px;
+}
+.adm-nav{display:flex;flex:1;gap:0;overflow-x:auto}
+.adm-nav-btn{
+  padding:16px 18px;border:none;background:transparent;
+  color:var(--gr);font-family:'Montserrat',sans-serif;font-weight:700;
+  font-size:11px;letter-spacing:0.1em;text-transform:uppercase;
+  cursor:pointer;border-bottom:2px solid transparent;
+  transition:color 0.2s,border-color 0.2s;white-space:nowrap;
+  position:relative;
+}
+.adm-nav-btn:hover{color:var(--wh)}
+.adm-nav-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
+.adm-nav-badge{
+  background:var(--red);color:var(--wh);font-size:9px;font-weight:900;
+  width:16px;height:16px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  margin-left:5px;vertical-align:middle;
+}
+.adm-logout{
+  margin-left:auto;padding:8px 14px;border-radius:8px;border:none;
+  background:transparent;border:1px solid rgba(144,64,64,0.4);
+  color:var(--gr);font-family:'Montserrat',sans-serif;font-weight:700;
+  font-size:11px;letter-spacing:0.08em;text-transform:uppercase;
+  cursor:pointer;white-space:nowrap;
+}
+.adm-logout:hover{color:var(--wh)}
+
+.adm-main{padding:24px 20px;max-width:1200px;margin:0 auto}
+.tab-section{display:none}
+.tab-section.active{display:block}
+
+/* ── CARDS COMUNS ── */
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:28px}
+.stat-card{
+  background:var(--bg3);border:1px solid var(--border);border-radius:14px;
+  padding:16px 18px;
+}
+.stat-card-label{font-size:11px;color:var(--gr);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px}
+.stat-card-val{font-family:'Montserrat',sans-serif;font-weight:900;font-size:22px;color:var(--gold)}
+.stat-card-sub{font-size:12px;color:var(--gr);margin-top:3px}
+.stat-card.green .stat-card-val{color:#66bb6a}
+.stat-card.red   .stat-card-val{color:#ef5350}
+
+/* ── DASHBOARD ── */
+.period-title{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:13px;
+  color:var(--gr);letter-spacing:0.12em;text-transform:uppercase;
+  margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);
+}
+.donut-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-bottom:32px}
+.donut-card{
+  background:var(--bg3);border:1px solid var(--border);border-radius:16px;padding:20px;
+}
+.donut-period{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:12px;
+  color:var(--gold);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px;
+}
+.donut-total{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:24px;
+  color:var(--wh);margin-bottom:2px;
+}
+.donut-qty{font-size:12px;color:var(--gr);margin-bottom:16px}
+.donut-wrap{position:relative;width:160px;height:160px;margin:0 auto 16px}
+.donut-center{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;pointer-events:none;
+}
+.donut-center-val{font-family:'Montserrat',sans-serif;font-weight:900;font-size:16px;color:var(--wh)}
+.donut-center-lbl{font-size:10px;color:var(--gr);text-transform:uppercase;letter-spacing:0.06em}
+.donut-legend{display:flex;flex-direction:column;gap:6px}
+.legend-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.legend-name{flex:1;color:var(--gr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.legend-pct{font-family:'Montserrat',sans-serif;font-weight:700;color:var(--wh);min-width:36px;text-align:right}
+
+.line-card{
+  background:var(--bg3);border:1px solid var(--border);border-radius:16px;
+  padding:20px;margin-bottom:28px;
+}
+.line-card-title{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:13px;
+  color:var(--gr);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:18px;
+}
+.line-wrap{position:relative;height:220px}
+
+/* ── HOJE ── */
+.hoje-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+.hoje-date{font-family:'Montserrat',sans-serif;font-weight:900;font-size:18px;color:var(--wh)}
+.order-list{display:flex;flex-direction:column;gap:12px}
+.order-card{
+  background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:16px;
+}
+.order-card-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.order-time{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;color:var(--gr)}
+.order-total-badge{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:14px;
+  color:var(--gold);margin-left:auto;
+}
+.status-badge{
+  padding:3px 10px;border-radius:20px;font-family:'Montserrat',sans-serif;
+  font-weight:700;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
+}
+.status-badge.pendente{background:rgba(240,180,0,0.15);color:#FFCC00;border:1px solid rgba(240,180,0,0.3)}
+.status-badge.confirmado{background:rgba(46,125,50,0.2);color:#66bb6a;border:1px solid rgba(46,125,50,0.4)}
+.status-badge.cancelado{background:rgba(144,64,64,0.2);color:#ef5350;border:1px solid rgba(144,64,64,0.4)}
+.order-items{margin-bottom:12px}
+.order-item-row{
+  font-size:12px;color:var(--gr);padding:3px 0;
+  display:flex;justify-content:space-between;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+}
+.order-item-row:last-child{border-bottom:none}
+.order-actions{display:flex;gap:8px}
+.btn-confirmar{
+  flex:1;padding:10px;border-radius:8px;border:none;
+  background:linear-gradient(135deg,#2E7D32,#1B5E20);color:var(--wh);
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;
+}
+.btn-cancelar{
+  flex:1;padding:10px;border-radius:8px;border:none;
+  background:rgba(144,64,64,0.25);color:#ef5350;
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;
+  border:1px solid rgba(144,64,64,0.3);
+}
+.empty-msg{
+  text-align:center;color:var(--gr);font-size:14px;
+  padding:40px 20px;
+}
+
+/* ── DETALHE ── */
+.filter-bar{
+  display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;
+  background:var(--bg3);border:1px solid var(--border);border-radius:14px;
+  padding:16px;margin-bottom:20px;
+}
+.filter-field{display:flex;flex-direction:column;gap:5px}
+.filter-field label{font-size:11px;color:var(--gr);letter-spacing:0.08em;text-transform:uppercase}
+.filter-field input[type="date"]{
+  padding:9px 12px;border-radius:8px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--border);
+  color:var(--wh);font-family:'Inter',sans-serif;font-size:13px;
+  outline:none;cursor:pointer;
+  color-scheme:dark;
+}
+.btn-filter{
+  padding:9px 18px;border-radius:8px;border:none;
+  background:var(--red);color:var(--wh);
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;
+}
+.btn-export{
+  padding:9px 18px;border-radius:8px;
+  background:linear-gradient(135deg,#1B5E20,#2E7D32);color:var(--wh);border:none;
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;
+  display:flex;align-items:center;gap:6px;
+}
+.detail-section-title{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:12px;
+  color:var(--gr);letter-spacing:0.12em;text-transform:uppercase;
+  margin:24px 0 12px;
+}
+.tbl-wrap{overflow-x:auto;border-radius:12px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{background:var(--bg4)}
+th{
+  padding:11px 14px;text-align:left;
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:10px;
+  color:var(--gr);letter-spacing:0.1em;text-transform:uppercase;
+  border-bottom:1px solid var(--border);
+}
+td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.04);color:var(--wh)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:rgba(255,255,255,0.02)}
+.td-right{text-align:right}
+.td-gold{color:var(--gold);font-family:'Montserrat',sans-serif;font-weight:700}
+.subtotal-row td{
+  background:rgba(240,232,112,0.06);
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:12px;
+  color:var(--gold);border-top:1px solid rgba(240,232,112,0.2);
+  border-bottom:1px solid rgba(240,232,112,0.2);
+}
+.grand-total-row td{
+  background:rgba(240,232,112,0.1);
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:13px;
+  color:var(--gold);border-top:2px solid rgba(240,232,112,0.4);
+}
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ── -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">Hong Kong Express</div>
+    <div class="login-title">Painel Admin</div>
+    <form id="loginForm" autocomplete="off">
+      <div class="login-field">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="seu@email.com" required>
+      </div>
+      <div class="login-field">
+        <label>Senha</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" required>
+      </div>
+      <button class="login-btn" type="submit" id="loginBtn">Entrar</button>
+    </form>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- ── ADMIN ── -->
+<div id="adminScreen">
+  <header class="adm-header">
+    <div class="adm-brand">🐉 HKE Admin</div>
+    <nav class="adm-nav">
+      <button class="adm-nav-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="adm-nav-btn" data-tab="hoje">Hoje<span class="adm-nav-badge" id="pendBadge" style="display:none">0</span></button>
+      <button class="adm-nav-btn" data-tab="detalhe">Detalhe</button>
+    </nav>
+    <button class="adm-logout" id="logoutBtn">Sair</button>
+  </header>
+
+  <main class="adm-main">
+
+    <!-- DASHBOARD -->
+    <section class="tab-section active" id="tabDashboard">
+      <div class="donut-grid" id="donutGrid">
+        <!-- cards renderizados por JS -->
+      </div>
+      <div class="line-card">
+        <div class="line-card-title">Evolução mensal — Faturação &amp; Qtd. Pratos</div>
+        <div class="line-wrap"><canvas id="lineChart"></canvas></div>
+      </div>
+    </section>
+
+    <!-- HOJE -->
+    <section class="tab-section" id="tabHoje">
+      <div class="hoje-header">
+        <div class="hoje-date" id="hojeDate"></div>
+      </div>
+      <div class="stat-row" id="hojeStats">
+        <div class="stat-card green">
+          <div class="stat-card-label">Faturado hoje</div>
+          <div class="stat-card-val" id="hojeFaturado">R$ 0,00</div>
+          <div class="stat-card-sub" id="hojeQtdConf">0 pratos</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Pendentes</div>
+          <div class="stat-card-val" id="hojePend">0</div>
+          <div class="stat-card-sub">pedidos</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-card-label">Cancelados</div>
+          <div class="stat-card-val" id="hojeCanc">0</div>
+          <div class="stat-card-sub" id="hojeValCanc">R$ 0,00 perdidos</div>
+        </div>
+      </div>
+      <div class="order-list" id="orderList"></div>
+    </section>
+
+    <!-- DETALHE -->
+    <section class="tab-section" id="tabDetalhe">
+      <div class="filter-bar">
+        <div class="filter-field">
+          <label>De</label>
+          <input type="date" id="filterFrom">
+        </div>
+        <div class="filter-field">
+          <label>Até</label>
+          <input type="date" id="filterTo">
+        </div>
+        <button class="btn-filter" id="btnFilter">Filtrar</button>
+        <button class="btn-export" id="btnExport">📥 Excel</button>
+      </div>
+
+      <div class="detail-section-title">Detalhes por pedido</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th><th>Hora</th><th>Item</th>
+              <th class="td-right">Qtd</th>
+              <th class="td-right">Unit.</th>
+              <th class="td-right">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody id="tblBody"></tbody>
+        </table>
+      </div>
+
+      <div class="detail-section-title">Subtotal por prato</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Prato</th>
+              <th class="td-right">Qtd</th>
+              <th class="td-right">Total (R$)</th>
+              <th class="td-right">%</th>
+            </tr>
+          </thead>
+          <tbody id="tblByPlate"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+// ── FIREBASE INIT ──
+const fbApp = firebase.initializeApp({
+  apiKey:"AIzaSyAdPXyBm9fAD7OgDYl2qD7Yhz4JlXq0JOs",
+  authDomain:"adm-ventas-cardapio-hke.firebaseapp.com",
+  projectId:"adm-ventas-cardapio-hke",
+  storageBucket:"adm-ventas-cardapio-hke.firebasestorage.app",
+  messagingSenderId:"528788242727",
+  appId:"1:528788242727:web:9c4862eeab5c16db82a902"
+})
+const db   = firebase.firestore()
+const auth = firebase.auth()
+
+// ── AUTH ──
+document.getElementById('loginForm').addEventListener('submit', async e=>{
+  e.preventDefault()
+  const btn = document.getElementById('loginBtn')
+  const err = document.getElementById('loginError')
+  btn.disabled = true; btn.textContent = 'Entrando...'
+  err.textContent = ''
+  try{
+    await auth.signInWithEmailAndPassword(
+      document.getElementById('loginEmail').value.trim(),
+      document.getElementById('loginPassword').value
+    )
+  }catch(ex){
+    err.textContent = 'Email ou senha inválidos'
+    btn.disabled = false; btn.textContent = 'Entrar'
+  }
+})
+
+document.getElementById('logoutBtn').addEventListener('click',()=> auth.signOut())
+
+auth.onAuthStateChanged(user=>{
+  if(user){
+    document.getElementById('loginScreen').style.display = 'none'
+    document.getElementById('adminScreen').classList.add('show')
+    initAdmin()
+  }else{
+    document.getElementById('loginScreen').style.display = 'flex'
+    document.getElementById('adminScreen').classList.remove('show')
+  }
+})
+
+// ── TABS ──
+document.querySelectorAll('.adm-nav-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.adm-nav-btn').forEach(b=>b.classList.remove('active'))
+    document.querySelectorAll('.tab-section').forEach(s=>s.classList.remove('active'))
+    btn.classList.add('active')
+    document.getElementById('tab'+cap(btn.dataset.tab)).classList.add('active')
+    if(btn.dataset.tab==='detalhe') loadDetalhe()
+  })
+})
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
+
+// ── GRUPOS ──
+const GRUPOS = [
+  {label:'Chow Fan',         keys:['chow fan']},
+  {label:'Chow Mein',        keys:['chow mein']},
+  {label:'Chop Suey',        keys:['chop suey']},
+  {label:'Shiitake Agridoce',keys:['shiitake']},
+  {label:'Carne Teriyaki',   keys:['teriyaki']},
+  {label:'Agripicante',      keys:['agripicante']},
+  {label:'Kung Pao',         keys:['kung pao']},
+  {label:'Gyoza',            keys:['gyoza']},
+  {label:'Combos',           keys:['combo']},
+  {label:'Bebidas & Molhos', keys:['cerveja','refrigerante','molho','salsa','bebida','heineken','coca','suco']},
+]
+const CHART_COLORS = [
+  '#F0E870','#EF5350','#42A5F5','#66BB6A','#FFA726',
+  '#AB47BC','#26C6DA','#EC407A','#8D6E63','#78909C'
+]
+function getGrupo(name){
+  const n = name.toLowerCase()
+  for(const g of GRUPOS){ if(g.keys.some(k=>n.includes(k))) return g.label }
+  return 'Outros'
+}
+
+// ── UTILS ──
+function fmtBRL(v){return 'R$ '+Number(v).toFixed(2).replace('.',',')}
+function fmtDate(ts){
+  if(!ts) return '--'
+  const d = ts.toDate ? ts.toDate() : new Date(ts)
+  return d.toLocaleDateString('pt-BR')
+}
+function fmtTime(ts){
+  if(!ts) return '--'
+  const d = ts.toDate ? ts.toDate() : new Date(ts)
+  return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+}
+function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x}
+function endOfDay(d){const x=new Date(d);x.setHours(23,59,59,999);return x}
+function startOfWeek(){
+  const d=new Date(); const day=d.getDay(); const diff=day===0?-6:1-day
+  const mon=new Date(d); mon.setDate(d.getDate()+diff); return startOfDay(mon)
+}
+function startOfMonth(offset=0){
+  const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()+offset)
+  return startOfDay(d)
+}
+function endOfMonth(offset=0){
+  const d=new Date(); d.setMonth(d.getMonth()+offset+1); d.setDate(0)
+  return endOfDay(d)
+}
+function monthLabel(offset=0){
+  const d=new Date(); d.setMonth(d.getMonth()+offset)
+  return d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})
+}
+
+// ── DATA ──
+let allOrders = []
+let hojeUnsubscribe = null
+let lineChartInst = null
+
+async function initAdmin(){
+  setDefaultFilters()
+  await loadAllOrders()
+  renderDashboard()
+  setupHoje()
+}
+
+async function loadAllOrders(){
+  const snap = await db.collection('orders')
+    .where('status','==','confirmado')
+    .orderBy('createdAt','desc')
+    .get()
+  allOrders = snap.docs.map(d=>({id:d.id,...d.data()}))
+}
+
+// ── DASHBOARD ──
+function buildPeriodData(orders){
+  const groups = {}
+  let total = 0, qty = 0
+  for(const o of orders){
+    total += o.total || 0
+    for(const it of (o.items||[])){
+      qty += it.qty || 0
+      const g = getGrupo(it.name)
+      if(!groups[g]) groups[g] = {qty:0,val:0}
+      groups[g].qty += it.qty || 0
+      groups[g].val += (it.qty||0)*(it.price||0)
+    }
+  }
+  return {total, qty, groups}
+}
+
+function filterByPeriod(start, end){
+  return allOrders.filter(o=>{
+    if(!o.createdAt) return false
+    const d = o.createdAt.toDate()
+    return d >= start && d <= end
+  })
+}
+
+function renderDonut(canvasId, groups, total){
+  const ctx = document.getElementById(canvasId)
+  if(!ctx) return
+  const labels=[], data=[], colors=[]
+  let i=0
+  for(const [name,val] of Object.entries(groups)){
+    labels.push(name); data.push(val.qty); colors.push(CHART_COLORS[i%CHART_COLORS.length]); i++
+  }
+  if(Chart.getChart(canvasId)) Chart.getChart(canvasId).destroy()
+  new Chart(ctx,{
+    type:'doughnut',
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0,hoverOffset:4}]},
+    options:{
+      cutout:'70%',
+      plugins:{legend:{display:false},tooltip:{
+        callbacks:{label:ctx=>{
+          const sum=ctx.dataset.data.reduce((a,b)=>a+b,0)
+          const pct=sum?((ctx.raw/sum)*100).toFixed(1):0
+          return ` ${ctx.label}: ${ctx.raw} un. (${pct}%)`
+        }}
+      }},
+      animation:{duration:600}
+    }
+  })
+}
+
+function makeLegend(groups, totalQty){
+  return Object.entries(groups)
+    .sort((a,b)=>b[1].qty-a[1].qty)
+    .slice(0,6)
+    .map(([name,val],i)=>{
+      const pct = totalQty ? ((val.qty/totalQty)*100).toFixed(1) : '0.0'
+      const color = CHART_COLORS[GRUPOS.findIndex(g=>g.label===name)%CHART_COLORS.length] || CHART_COLORS[i]
+      return `<div class="legend-row">
+        <div class="legend-dot" style="background:${color}"></div>
+        <div class="legend-name">${name}</div>
+        <div class="legend-pct">${pct}%</div>
+      </div>`
+    }).join('')
+}
+
+function renderDashboard(){
+  const now = new Date()
+  const periods = [
+    {id:'semana', label:'Semana Atual',    start:startOfWeek(),    end:endOfDay(now)},
+    {id:'mesAtual', label:'Mês Atual',     start:startOfMonth(0),  end:endOfDay(now)},
+    {id:'mesAnt',   label:monthLabel(-1),  start:startOfMonth(-1), end:endOfMonth(-1)},
+  ]
+
+  const grid = document.getElementById('donutGrid')
+  grid.innerHTML = ''
+
+  periods.forEach(p=>{
+    const orders = filterByPeriod(p.start, p.end)
+    const {total, qty, groups} = buildPeriodData(orders)
+    const card = document.createElement('div')
+    card.className = 'donut-card'
+    card.innerHTML = `
+      <div class="donut-period">${p.label}</div>
+      <div class="donut-total">${fmtBRL(total)}</div>
+      <div class="donut-qty">${qty} pratos vendidos</div>
+      <div class="donut-wrap">
+        <canvas id="donut_${p.id}" width="160" height="160"></canvas>
+        <div class="donut-center">
+          <div class="donut-center-val">${orders.length}</div>
+          <div class="donut-center-lbl">pedidos</div>
+        </div>
+      </div>
+      <div class="donut-legend">${makeLegend(groups, qty)}</div>
+    `
+    grid.appendChild(card)
+    setTimeout(()=>renderDonut('donut_'+p.id, groups, total), 50)
+  })
+
+  renderLineChart()
+}
+
+function renderLineChart(){
+  const months = []
+  const faturacao = [], qtdPlatos = []
+
+  for(let i=11; i>=0; i--){
+    const start = startOfMonth(-i)
+    const end   = endOfMonth(-i)
+    const label = new Date(start).toLocaleDateString('pt-BR',{month:'short',year:'2-digit'})
+    const orders = filterByPeriod(start, end)
+    const {total, qty} = buildPeriodData(orders)
+    months.push(label)
+    faturacao.push(parseFloat(total.toFixed(2)))
+    qtdPlatos.push(qty)
+  }
+
+  const ctx = document.getElementById('lineChart')
+  if(lineChartInst) lineChartInst.destroy()
+  lineChartInst = new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:months,
+      datasets:[
+        {
+          label:'Faturação (R$)',yAxisID:'y1',
+          data:faturacao,
+          borderColor:'#F0E870',backgroundColor:'rgba(240,232,112,0.08)',
+          tension:0.4,fill:true,pointBackgroundColor:'#F0E870',pointRadius:4,
+        },
+        {
+          label:'Qtd. Pratos',yAxisID:'y2',
+          data:qtdPlatos,
+          borderColor:'#42A5F5',backgroundColor:'rgba(66,165,245,0.06)',
+          tension:0.4,fill:true,pointBackgroundColor:'#42A5F5',pointRadius:4,
+        }
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:'#888',font:{family:'Montserrat',size:11}}}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#888',font:{size:10}}},
+        y1:{
+          type:'linear',position:'left',
+          grid:{color:'rgba(255,255,255,0.05)'},
+          ticks:{color:'#F0E870',font:{size:10},callback:v=>'R$'+v.toLocaleString('pt-BR')},
+        },
+        y2:{
+          type:'linear',position:'right',
+          grid:{display:false},
+          ticks:{color:'#42A5F5',font:{size:10}},
+        }
+      }
+    }
+  })
+}
+
+// ── HOJE ──
+function setupHoje(){
+  const today = new Date()
+  document.getElementById('hojeDate').textContent =
+    today.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})
+
+  if(hojeUnsubscribe) hojeUnsubscribe()
+  hojeUnsubscribe = db.collection('orders')
+    .where('createdAt','>=', firebase.firestore.Timestamp.fromDate(startOfDay(new Date())))
+    .orderBy('createdAt','desc')
+    .onSnapshot(snap=>{
+      const orders = snap.docs.map(d=>({id:d.id,...d.data()}))
+      renderHoje(orders)
+    })
+}
+
+function renderHoje(orders){
+  const pend = orders.filter(o=>o.status==='pendente')
+  const conf = orders.filter(o=>o.status==='confirmado')
+  const canc = orders.filter(o=>o.status==='cancelado')
+
+  const fatTotal = conf.reduce((a,o)=>a+o.total,0)
+  const fatQty   = conf.reduce((a,o)=>a+o.items.reduce((b,it)=>b+it.qty,0),0)
+  const cancTotal = canc.reduce((a,o)=>a+o.total,0)
+
+  document.getElementById('hojeFaturado').textContent = fmtBRL(fatTotal)
+  document.getElementById('hojeQtdConf').textContent  = fatQty+' pratos confirmados'
+  document.getElementById('hojePend').textContent     = pend.length
+  document.getElementById('hojeCanc').textContent     = canc.length
+  document.getElementById('hojeValCanc').textContent  = fmtBRL(cancTotal)+' perdidos'
+
+  const badge = document.getElementById('pendBadge')
+  if(pend.length > 0){
+    badge.style.display = 'inline-flex'; badge.textContent = pend.length
+  }else{ badge.style.display = 'none' }
+
+  const list = document.getElementById('orderList')
+  if(!orders.length){
+    list.innerHTML = '<div class="empty-msg">Nenhum pedido hoje ainda.</div>'
+    return
+  }
+  list.innerHTML = ''
+  orders.forEach(o=>{ list.appendChild(buildOrderCard(o)) })
+}
+
+function buildOrderCard(o){
+  const card = document.createElement('div')
+  card.className = 'order-card'
+  card.id = 'order_'+o.id
+  const statusLabel = {pendente:'Pendente',confirmado:'Confirmado',cancelado:'Cancelado'}
+  const items = (o.items||[]).map(it=>
+    `<div class="order-item-row"><span>${it.qty}x ${it.name}</span><span>${fmtBRL(it.qty*it.price)}</span></div>`
+  ).join('')
+  const actions = o.status==='pendente' ? `
+    <div class="order-actions">
+      <button class="btn-confirmar" onclick="setStatus('${o.id}','confirmado')">✅ Confirmar</button>
+      <button class="btn-cancelar"  onclick="setStatus('${o.id}','cancelado')">❌ Cancelar</button>
+    </div>` : ''
+  card.innerHTML = `
+    <div class="order-card-header">
+      <span class="order-time">${fmtTime(o.createdAt)}</span>
+      <span class="status-badge ${o.status}">${statusLabel[o.status]||o.status}</span>
+      <span class="order-total-badge">${fmtBRL(o.total)}</span>
+    </div>
+    <div class="order-items">${items}</div>
+    ${actions}
+  `
+  return card
+}
+
+async function setStatus(id, status){
+  const update = {status}
+  if(status==='confirmado') update.confirmedAt = firebase.firestore.FieldValue.serverTimestamp()
+  if(status==='cancelado')  update.cancelledAt = firebase.firestore.FieldValue.serverTimestamp()
+  await db.collection('orders').doc(id).update(update)
+  await loadAllOrders()
+  renderDashboard()
+}
+
+// ── DETALHE ──
+function setDefaultFilters(){
+  const today = new Date().toISOString().split('T')[0]
+  const firstDay = new Date(); firstDay.setDate(1)
+  document.getElementById('filterFrom').value = firstDay.toISOString().split('T')[0]
+  document.getElementById('filterTo').value   = today
+}
+
+function getFilteredOrders(){
+  const from = startOfDay(new Date(document.getElementById('filterFrom').value+'T00:00:00'))
+  const to   = endOfDay(new Date(document.getElementById('filterTo').value+'T00:00:00'))
+  return allOrders.filter(o=>{
+    if(!o.createdAt) return false
+    const d = o.createdAt.toDate()
+    return d >= from && d <= to
+  })
+}
+
+function loadDetalhe(){
+  const orders = getFilteredOrders()
+  renderTblDetail(orders)
+  renderTblByPlate(orders)
+}
+
+function renderTblDetail(orders){
+  const tbody = document.getElementById('tblBody')
+  tbody.innerHTML = ''
+  if(!orders.length){
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#555;padding:24px">Nenhum pedido no período</td></tr>'
+    return
+  }
+  const byDate = {}
+  orders.forEach(o=>{
+    const date = fmtDate(o.createdAt)
+    if(!byDate[date]) byDate[date]=[]
+    byDate[date].push(o)
+  })
+  let grandTotal=0, grandQty=0
+  Object.entries(byDate).forEach(([date,dayOrders])=>{
+    let dateTotal=0, dateQty=0
+    dayOrders.forEach(o=>{
+      (o.items||[]).forEach(it=>{
+        const sub = it.qty*it.price
+        dateTotal += sub; grandTotal += sub
+        dateQty += it.qty; grandQty += it.qty
+        const tr = document.createElement('tr')
+        tr.innerHTML = `<td>${date}</td><td>${fmtTime(o.createdAt)}</td>
+          <td>${it.name}</td>
+          <td class="td-right">${it.qty}</td>
+          <td class="td-right">${fmtBRL(it.price)}</td>
+          <td class="td-right td-gold">${fmtBRL(sub)}</td>`
+        tbody.appendChild(tr)
+      })
+    })
+    const sub = document.createElement('tr')
+    sub.className = 'subtotal-row'
+    sub.innerHTML = `<td colspan="3">Subtotal ${date}</td>
+      <td class="td-right">${dateQty}</td><td></td>
+      <td class="td-right">${fmtBRL(dateTotal)}</td>`
+    tbody.appendChild(sub)
+  })
+  const gt = document.createElement('tr')
+  gt.className = 'grand-total-row'
+  gt.innerHTML = `<td colspan="3">TOTAL GERAL</td>
+    <td class="td-right">${grandQty}</td><td></td>
+    <td class="td-right">${fmtBRL(grandTotal)}</td>`
+  tbody.appendChild(gt)
+}
+
+function renderTblByPlate(orders){
+  const tbody = document.getElementById('tblByPlate')
+  tbody.innerHTML = ''
+  const map = {}
+  let grandTotal=0, grandQty=0
+  orders.forEach(o=>{
+    (o.items||[]).forEach(it=>{
+      const g = getGrupo(it.name)
+      if(!map[g]) map[g]={qty:0,val:0}
+      map[g].qty += it.qty; map[g].val += it.qty*it.price
+      grandQty += it.qty; grandTotal += it.qty*it.price
+    })
+  })
+  Object.entries(map)
+    .sort((a,b)=>b[1].val-a[1].val)
+    .forEach(([name,v])=>{
+      const pct = grandTotal ? ((v.val/grandTotal)*100).toFixed(1) : '0.0'
+      const tr = document.createElement('tr')
+      tr.innerHTML = `<td>${name}</td>
+        <td class="td-right">${v.qty}</td>
+        <td class="td-right td-gold">${fmtBRL(v.val)}</td>
+        <td class="td-right">${pct}%</td>`
+      tbody.appendChild(tr)
+    })
+  const gt = document.createElement('tr')
+  gt.className = 'grand-total-row'
+  gt.innerHTML = `<td>TOTAL</td>
+    <td class="td-right">${grandQty}</td>
+    <td class="td-right">${fmtBRL(grandTotal)}</td>
+    <td class="td-right">100%</td>`
+  tbody.appendChild(gt)
+}
+
+document.getElementById('btnFilter').addEventListener('click', loadDetalhe)
+
+// ── EXPORT EXCEL ──
+document.getElementById('btnExport').addEventListener('click',()=>{
+  const orders = getFilteredOrders()
+  const wb = XLSX.utils.book_new()
+
+  // Sheet 1: detalhe
+  const rows1 = [['Data','Hora','Item','Qtd','Unitário (R$)','Subtotal (R$)']]
+  orders.forEach(o=>{
+    (o.items||[]).forEach(it=>{
+      rows1.push([fmtDate(o.createdAt),fmtTime(o.createdAt),it.name,it.qty,it.price,(it.qty*it.price).toFixed(2)])
+    })
+  })
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows1), 'Detalhes')
+
+  // Sheet 2: por prato
+  const map = {}
+  let total=0
+  orders.forEach(o=>{
+    (o.items||[]).forEach(it=>{
+      const g=getGrupo(it.name)
+      if(!map[g]) map[g]={qty:0,val:0}
+      map[g].qty+=it.qty; map[g].val+=it.qty*it.price; total+=it.qty*it.price
+    })
+  })
+  const rows2 = [['Prato','Qtd','Total (R$)','%']]
+  Object.entries(map).sort((a,b)=>b[1].val-a[1].val).forEach(([name,v])=>{
+    rows2.push([name, v.qty, v.val.toFixed(2), total?((v.val/total)*100).toFixed(1)+'%':'0%'])
+  })
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows2), 'Por Prato')
+
+  const from = document.getElementById('filterFrom').value
+  const to   = document.getElementById('filterTo').value
+  XLSX.writeFile(wb, `HKE_Vendas_${from}_${to}.xlsx`)
+})
+</script>
+</body>
+</html>

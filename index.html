@@ -574,7 +574,71 @@ body.has-cart{padding-bottom:78px}
   display:flex;align-items:center;justify-content:center;gap:6px;
 }
 .cart-checkout-btn:active{transform:scale(0.98)}
+
+/* ── ORDER MODAL ── */
+.order-modal-overlay{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(0,0,0,0.88);
+  display:flex;align-items:flex-end;justify-content:center;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.25s ease;
+}
+.order-modal-overlay.open{opacity:1;pointer-events:all}
+.order-modal{
+  max-width:480px;width:100%;
+  background:linear-gradient(180deg,#1a0a0a,#080404);
+  border:1px solid rgba(240,232,112,0.25);
+  border-radius:22px 22px 0 0;
+  padding:26px 20px 36px;
+  transform:translateY(100%);
+  transition:transform 0.32s ease;
+}
+.order-modal-overlay.open .order-modal{transform:translateY(0)}
+.order-modal-title{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:17px;
+  color:var(--amarillo);text-align:center;margin-bottom:4px;
+}
+.order-modal-sub{
+  font-family:'Inter',sans-serif;font-size:12px;color:var(--gris);
+  text-align:center;margin-bottom:18px;
+}
+.order-modal-items{
+  background:rgba(255,255,255,0.04);border-radius:10px;
+  padding:10px 14px;margin-bottom:14px;
+  max-height:160px;overflow-y:auto;
+}
+.order-modal-row{
+  font-family:'Inter',sans-serif;font-size:13px;color:var(--blanco);
+  padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);
+  display:flex;justify-content:space-between;gap:8px;
+}
+.order-modal-row:last-child{border-bottom:none}
+.order-modal-total{
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:15px;
+  color:var(--amarillo);text-align:right;margin-bottom:18px;
+}
+.order-modal-btns{display:flex;flex-direction:column;gap:10px}
+.modal-btn-more{
+  padding:13px;border-radius:10px;
+  border:1px solid rgba(240,232,112,0.35);background:transparent;
+  color:var(--amarillo);font-family:'Montserrat',sans-serif;
+  font-weight:700;font-size:12px;letter-spacing:0.08em;
+  text-transform:uppercase;cursor:pointer;
+}
+.modal-btn-send{
+  padding:14px;border-radius:10px;border:none;
+  background:linear-gradient(135deg,#25D366,#1DA851);
+  color:#fff;font-family:'Montserrat',sans-serif;font-weight:900;
+  font-size:13px;letter-spacing:0.08em;text-transform:uppercase;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  gap:8px;box-shadow:0 4px 14px rgba(37,211,102,0.35);
+}
+.modal-btn-send:disabled{opacity:0.6;cursor:default}
 </style>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -1071,6 +1135,22 @@ body.has-cart{padding-bottom:78px}
   </div>
 </div>
 
+<!-- ORDER CONFIRMATION MODAL -->
+<div class="order-modal-overlay" id="orderModalOverlay">
+  <div class="order-modal">
+    <div class="order-modal-title">Deseja adicionar algo mais?</div>
+    <div class="order-modal-sub">Confira seu pedido antes de enviar</div>
+    <div class="order-modal-items" id="orderModalItems"></div>
+    <div class="order-modal-total" id="orderModalTotal"></div>
+    <div class="order-modal-btns">
+      <button class="modal-btn-more" id="modalBtnMore" type="button">Sim, adicionar mais</button>
+      <button class="modal-btn-send" id="modalBtnSend" type="button">
+        <span>📱</span><span>Não, enviar pedido</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- CART PANEL -->
 <div class="cart-fab" id="cartFab" aria-hidden="true">
   <div class="cart-bar" id="cartBar">
@@ -1316,21 +1396,89 @@ document.getElementById('cartClearBtn').addEventListener('click', e=>{
   e.stopPropagation()
   if(confirm('Limpar o pedido?')) clearCart()
 })
-document.getElementById('cartCheckoutBtn').addEventListener('click', e=>{
-  e.stopPropagation()
+// ── FIREBASE ──
+const fbApp = firebase.initializeApp({
+  apiKey:"AIzaSyAdPXyBm9fAD7OgDYl2qD7Yhz4JlXq0JOs",
+  authDomain:"adm-ventas-cardapio-hke.firebaseapp.com",
+  projectId:"adm-ventas-cardapio-hke",
+  storageBucket:"adm-ventas-cardapio-hke.firebasestorage.app",
+  messagingSenderId:"528788242727",
+  appId:"1:528788242727:web:9c4862eeab5c16db82a902"
+})
+const db = firebase.firestore()
+
+async function saveOrderToFirestore(){
   const keys = Object.keys(cart)
   if(!keys.length) return
+  const items = keys.map(k=>({name:cart[k].name,price:cart[k].price,qty:cart[k].qty}))
+  const total = keys.reduce((a,k)=>a+cart[k].qty*cart[k].price,0)
+  try{
+    await db.collection('orders').add({
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      status: 'pendente',
+      items,
+      total
+    })
+  }catch(e){ console.error('Firestore error:',e) }
+}
+
+function buildWhatsAppUrl(){
+  const keys = Object.keys(cart)
   let msg = '*Olá! Gostaria de fazer um pedido:*\n\n'
   let total = 0
   keys.forEach(k=>{
     const it = cart[k]
-    const sub = it.qty * it.price
+    const sub = it.qty*it.price
     total += sub
     msg += `• ${it.qty}x ${it.name} — ${fmtBRL(sub)}\n`
   })
   msg += `\n*Total: ${fmtBRL(total)}*`
-  const url = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg)
-  window.open(url, '_blank')
+  return 'https://wa.me/'+WHATSAPP_NUMBER+'?text='+encodeURIComponent(msg)
+}
+
+// ── ORDER MODAL ──
+const modalOverlay = document.getElementById('orderModalOverlay')
+
+function openOrderModal(){
+  const keys = Object.keys(cart)
+  if(!keys.length) return
+  const listEl = document.getElementById('orderModalItems')
+  listEl.innerHTML = ''
+  let total = 0
+  keys.forEach(k=>{
+    const it = cart[k]; const sub = it.qty*it.price; total += sub
+    const row = document.createElement('div')
+    row.className = 'order-modal-row'
+    const nameSpan = document.createElement('span'); nameSpan.textContent = `${it.qty}x ${it.name}`
+    const valSpan = document.createElement('span'); valSpan.textContent = fmtBRL(sub)
+    row.appendChild(nameSpan); row.appendChild(valSpan)
+    listEl.appendChild(row)
+  })
+  document.getElementById('orderModalTotal').textContent = 'Total: '+fmtBRL(total)
+  modalOverlay.classList.add('open')
+}
+
+document.getElementById('modalBtnMore').addEventListener('click',()=>{
+  modalOverlay.classList.remove('open')
+})
+
+document.getElementById('modalBtnSend').addEventListener('click', async ()=>{
+  const btn = document.getElementById('modalBtnSend')
+  btn.disabled = true
+  btn.innerHTML = '<span>⏳</span><span>Salvando pedido...</span>'
+  await saveOrderToFirestore()
+  const url = buildWhatsAppUrl()
+  modalOverlay.classList.remove('open')
+  btn.disabled = false
+  btn.innerHTML = '<span>📱</span><span>Não, enviar pedido</span>'
+  clearCart()
+  window.open(url,'_blank')
+})
+
+document.getElementById('cartCheckoutBtn').addEventListener('click', e=>{
+  e.stopPropagation()
+  if(!Object.keys(cart).length) return
+  openOrderModal()
 })
 </script>
 </body>
