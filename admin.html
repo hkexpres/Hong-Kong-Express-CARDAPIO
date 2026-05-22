@@ -550,8 +550,37 @@ let chartSemana = null, chartMes = null, chartMesAnterior = null, chartLine = nu
 let allDashboardOrders = []
 let detalheSummaryData = []
 
+// ── AUDIO NOTIFICATION ──
+let audioCtx = null
+let prevPendingCount = -1
+
+function unlockAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  if (audioCtx.state === 'suspended') audioCtx.resume()
+}
+
+function playNotification() {
+  if (!audioCtx) return
+  const t = audioCtx.currentTime
+  const notes = [880, 1108]
+  notes.forEach((freq, i) => {
+    const osc  = audioCtx.createOscillator()
+    const gain = audioCtx.createGain()
+    osc.connect(gain)
+    gain.connect(audioCtx.destination)
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(freq, t + i * 0.18)
+    gain.gain.setValueAtTime(0, t + i * 0.18)
+    gain.gain.linearRampToValueAtTime(0.35, t + i * 0.18 + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.18 + 0.28)
+    osc.start(t + i * 0.18)
+    osc.stop(t + i * 0.18 + 0.30)
+  })
+}
+
 // ── AUTH ──
 document.getElementById('loginBtn').addEventListener('click', async () => {
+  unlockAudio()
   const email = document.getElementById('loginEmail').value.trim()
   const pass  = document.getElementById('loginPassword').value
   const errEl = document.getElementById('loginError')
@@ -578,6 +607,8 @@ auth.onAuthStateChanged(user => {
     document.getElementById('loginScreen').style.display = 'flex'
     document.getElementById('adminPanel').style.display = 'none'
     if (hojeUnsubscribe) { hojeUnsubscribe(); hojeUnsubscribe = null }
+    if (dashboardRefreshInterval) { clearInterval(dashboardRefreshInterval); dashboardRefreshInterval = null }
+    prevPendingCount = -1
   }
 })
 
@@ -604,6 +635,7 @@ document.querySelectorAll('.period-btn').forEach(btn => {
 
 // ── INIT ──
 let hojeUnsubscribe = null
+let dashboardRefreshInterval = null
 
 function initAdmin() {
   // set today's date label
@@ -618,7 +650,18 @@ function initAdmin() {
 
   loadDashboard()
   listenHoje()
+
+  // auto-refresh dashboard every 5 minutes
+  if (dashboardRefreshInterval) clearInterval(dashboardRefreshInterval)
+  dashboardRefreshInterval = setInterval(loadDashboard, 5 * 60 * 1000)
 }
+
+// refresh dashboard when user returns to the tab
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && document.getElementById('adminPanel').style.display !== 'none') {
+    loadDashboard()
+  }
+})
 
 // ── DASHBOARD ──
 async function loadDashboard() {
@@ -878,6 +921,10 @@ function renderHoje(orders) {
   const confirmed  = orders.filter(o => o.status === 'confirmed')
   const pending    = orders.filter(o => o.status === 'pending')
   const cancelled  = orders.filter(o => o.status === 'cancelled')
+
+  // sound notification on new pending orders
+  if (prevPendingCount >= 0 && pending.length > prevPendingCount) playNotification()
+  prevPendingCount = pending.length
 
   const faturadoBRL    = confirmed.reduce((a, o) => a + (o.total || 0), 0)
   const faturadoPlatos = confirmed.reduce((a, o) => a + (o.items || []).reduce((b, it) => b + it.qty, 0), 0)
