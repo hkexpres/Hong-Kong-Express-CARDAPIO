@@ -617,6 +617,26 @@ body.has-cart{padding-bottom:78px}
 .modal-spinner{display:none;text-align:center;padding:10px;color:#888;font-size:13px}
 .modal-spinner.show{display:block}
 .modal-actions{display:flex;gap:10px}
+
+/* ── CRM FIELDS IN MODAL ── */
+.crm-greeting{
+  font-size:15px;font-weight:600;color:#F0E870;margin-bottom:14px;
+  background:rgba(240,232,112,0.08);border-radius:8px;padding:10px 14px;
+  border:1px solid rgba(240,232,112,0.2);
+}
+.crm-form{margin-bottom:14px}
+.crm-form input{
+  display:block;width:100%;padding:10px 12px;margin-bottom:8px;
+  background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;
+  color:#fff;font-size:14px;font-family:'Inter',sans-serif;
+  outline:none;transition:border .15s;
+}
+.crm-form input:focus{border-color:#904040}
+.crm-form input::placeholder{color:#555}
+.crm-legend{
+  font-size:11px;color:#666;line-height:1.5;
+  text-align:center;padding:0 4px;
+}
 .modal-btn-back{
   flex:1;padding:13px;border-radius:10px;
   background:transparent;border:1px solid rgba(196,20,8,0.5);
@@ -1134,12 +1154,22 @@ body.has-cart{padding-bottom:78px}
 <!-- MODAL CONFIRMAR PEDIDO -->
 <div class="modal-overlay" id="confirmModal">
   <div class="modal-box">
-    <div class="modal-title">Deseja adicionar algo mais?</div>
+    <div class="modal-title" id="modalTitle">Deseja adicionar algo mais?</div>
     <div class="modal-sub">Confira seu pedido. Se estiver tudo certo, clique em Enviar.</div>
     <div class="modal-items" id="modalItems"></div>
     <div class="modal-total-row">
       <span>Total</span>
       <span id="modalTotal"></span>
+    </div>
+    <!-- Cliente reconhecido -->
+    <div class="crm-greeting" id="crmGreeting" style="display:none">
+      Olá, <span id="crmGreetingName"></span>! 👋
+    </div>
+    <!-- Novo cliente: campos opcionais -->
+    <div class="crm-form" id="crmForm">
+      <input type="tel" id="crmPhone" placeholder="Seu WhatsApp (ex: 84 99999-9999)" inputmode="tel" autocomplete="tel">
+      <input type="text" id="crmName" placeholder="Seu nome (opcional)" autocomplete="name">
+      <div class="crm-legend">Deixe seus dados para receber cupons com desconto e promoções</div>
     </div>
     <div class="modal-spinner" id="modalSpinner">Registrando pedido…</div>
     <div class="modal-actions" id="modalActions">
@@ -1405,17 +1435,28 @@ firebase.initializeApp({
 })
 const db = firebase.firestore()
 
+// ── CRM STORAGE ──
+const CRM_KEY = 'hke_customer_v1'
+function loadCustomer() {
+  try { return JSON.parse(localStorage.getItem(CRM_KEY)) || null } catch(e) { return null }
+}
+function saveCustomer(data) {
+  try { localStorage.setItem(CRM_KEY, JSON.stringify(data)) } catch(e) {}
+}
+
 // ── MODAL ──
 const confirmModal = document.getElementById('confirmModal')
 const modalItemsEl = document.getElementById('modalItems')
 const modalTotalEl = document.getElementById('modalTotal')
-const modalSpinner = document.getElementById('modalSpinner')
-const modalActions = document.getElementById('modalActions')
+const modalSpinner  = document.getElementById('modalSpinner')
+const modalActions  = document.getElementById('modalActions')
 
 document.getElementById('cartCheckoutBtn').addEventListener('click', e => {
   e.stopPropagation()
   const keys = Object.keys(cart)
   if (!keys.length) return
+
+  // populate items list
   modalItemsEl.innerHTML = ''
   keys.forEach(k => {
     const it = cart[k]
@@ -1433,6 +1474,23 @@ document.getElementById('cartCheckoutBtn').addEventListener('click', e => {
   })
   const total = keys.reduce((a, k) => a + cart[k].qty * cart[k].price, 0)
   modalTotalEl.textContent = fmtBRL(total)
+
+  // CRM: returning vs new customer
+  const customer = loadCustomer()
+  const titleEl    = document.getElementById('modalTitle')
+  const greetingEl = document.getElementById('crmGreeting')
+  const formEl     = document.getElementById('crmForm')
+  if (customer) {
+    titleEl.textContent = 'Tudo certo no seu pedido?'
+    greetingEl.style.display = 'block'
+    document.getElementById('crmGreetingName').textContent = customer.name || 'cliente'
+    formEl.style.display = 'none'
+  } else {
+    titleEl.textContent = 'Deseja adicionar algo mais?'
+    greetingEl.style.display = 'none'
+    formEl.style.display = 'block'
+  }
+
   confirmModal.classList.add('open')
 })
 
@@ -1446,16 +1504,29 @@ document.getElementById('modalSend').addEventListener('click', async () => {
   modalActions.style.display = 'none'
   modalSpinner.classList.add('show')
 
-  const items = keys.map(k => ({ name: cart[k].name, price: cart[k].price, qty: cart[k].qty }))
-  const total = items.reduce((a, it) => a + it.price * it.qty, 0)
+  const items  = keys.map(k => ({ name: cart[k].name, price: cart[k].price, qty: cart[k].qty }))
+  const total  = items.reduce((a, it) => a + it.price * it.qty, 0)
+
+  // read or create customer record
+  let customer = loadCustomer()
+  if (!customer) {
+    const phone = document.getElementById('crmPhone').value.trim()
+    const name  = document.getElementById('crmName').value.trim()
+    if (phone || name) {
+      customer = { phone, name, since: new Date().toISOString() }
+      saveCustomer(customer)
+    }
+  }
 
   try {
-    await db.collection('orders').add({
+    const orderData = {
       items,
       total,
       status: 'pending',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    })
+    }
+    if (customer) orderData.customer = { phone: customer.phone || '', name: customer.name || '' }
+    await db.collection('orders').add(orderData)
   } catch (err) {
     console.error('Firestore error:', err)
   }

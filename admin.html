@@ -293,6 +293,61 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
 
 /* loading */
 .spinner{text-align:center;color:var(--gray);padding:40px;font-size:13px}
+
+/* ── CRM ── */
+.crm-summary-bar{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;
+}
+@media(max-width:500px){.crm-summary-bar{grid-template-columns:1fr}}
+.crm-stat{
+  background:var(--bg2);border:1px solid rgba(144,64,64,0.2);border-radius:12px;
+  padding:14px 16px;
+}
+.crm-stat-label{font-size:12px;color:var(--gray);margin-bottom:6px}
+.crm-stat-val{font-family:'Montserrat',sans-serif;font-weight:900;font-size:20px;color:var(--white)}
+
+.crm-list{display:flex;flex-direction:column;gap:10px}
+.crm-card{
+  background:var(--bg2);border:1px solid rgba(255,255,255,0.07);border-radius:12px;
+  overflow:hidden;cursor:pointer;transition:border-color .15s;
+}
+.crm-card:hover{border-color:rgba(240,232,112,0.25)}
+.crm-card-header{
+  display:grid;grid-template-columns:40px 1fr auto auto auto;
+  align-items:center;gap:12px;padding:14px 16px;
+}
+.crm-avatar{
+  width:40px;height:40px;border-radius:50%;
+  background:linear-gradient(135deg,#904040,#F0E870);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Montserrat',sans-serif;font-weight:900;font-size:15px;color:#000;
+  flex-shrink:0;
+}
+.crm-info{min-width:0}
+.crm-customer-name{font-weight:600;font-size:14px;color:var(--white);margin-bottom:3px;truncate:ellipsis;overflow:hidden;white-space:nowrap}
+.crm-phone{font-size:12px;color:var(--gray)}
+.crm-metric{text-align:right;flex-shrink:0}
+.crm-metric-val{font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;color:var(--yellow)}
+.crm-metric-label{font-size:10px;color:var(--gray);margin-top:2px}
+.crm-chevron{color:var(--gray);font-size:12px;transition:transform .2s;flex-shrink:0}
+.crm-card.open .crm-chevron{transform:rotate(180deg)}
+
+.crm-history{
+  display:none;border-top:1px solid rgba(255,255,255,0.06);
+  padding:0 16px;background:rgba(0,0,0,0.3);
+}
+.crm-card.open .crm-history{display:block;padding:12px 16px}
+.crm-history-item{
+  display:flex;align-items:center;gap:10px;
+  padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05);
+  font-size:13px;color:var(--gray);
+}
+.crm-history-item:last-child{border-bottom:none}
+.crm-history-date{width:80px;flex-shrink:0;font-size:12px}
+.crm-history-items{flex:1;color:#bbb}
+.crm-history-total{font-weight:600;color:var(--yellow);white-space:nowrap}
+.crm-history-status{width:20px;text-align:center;flex-shrink:0}
+.crm-anon{color:var(--gray2);font-style:italic}
 </style>
 </head>
 <body>
@@ -317,6 +372,7 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
       <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
       <button class="tab-btn" data-tab="hoje">Hoje <span class="badge hidden" id="pendenteBadge">0</span></button>
       <button class="tab-btn" data-tab="detalhe">Detalhe</button>
+      <button class="tab-btn" data-tab="crm">CRM</button>
     </nav>
     <button id="logoutBtn">Sair</button>
   </header>
@@ -401,6 +457,11 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
       <button class="btn-export" id="exportBtn">📥 Exportar Excel</button>
     </div>
     <div id="detalheContent"><div class="spinner">Selecione um período e clique em Filtrar.</div></div>
+  </div>
+
+  <!-- CRM -->
+  <div class="tab-content" id="tab-crm" style="display:none">
+    <div id="crmContent"><div class="spinner">Carregando clientes…</div></div>
   </div>
 </div>
 
@@ -528,6 +589,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active')
     document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none')
     document.getElementById('tab-' + tab).style.display = 'block'
+    if (tab === 'crm') loadCRM()
   })
 })
 
@@ -1102,6 +1164,129 @@ function buildDetalheDonut(data) {
         <span class="legend-pct">${Math.round(d.total / total * 100)}%</span>
       </div>`).join('')
   }
+}
+
+// ── CRM ──
+async function loadCRM() {
+  const el = document.getElementById('crmContent')
+  el.innerHTML = '<div class="spinner">Carregando clientes…</div>'
+  try {
+    const snap = await db.collection('orders').get()
+    const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+    // group by phone — only orders with customer data
+    const identified = orders.filter(o => o.customer && (o.customer.phone || o.customer.name))
+    const customerMap = {}
+    identified.forEach(o => {
+      const key = o.customer.phone || ('_name_' + o.customer.name)
+      if (!customerMap[key]) {
+        customerMap[key] = {
+          phone: o.customer.phone || '',
+          name: o.customer.name || '',
+          orders: [],
+          confirmed: 0,
+          totalSpent: 0,
+          lastOrder: null
+        }
+      }
+      const c = customerMap[key]
+      if (o.customer.name && !c.name) c.name = o.customer.name
+      c.orders.push(o)
+      if (o.status === 'confirmed') {
+        c.confirmed++
+        c.totalSpent += o.total || 0
+      }
+      const ts = o.createdAt?.toDate?.()
+      if (ts && (!c.lastOrder || ts > c.lastOrder)) c.lastOrder = ts
+    })
+
+    const customers = Object.values(customerMap)
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+
+    renderCRM(customers, orders.length, identified.length)
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state">Erro: ${e.message}</div>`
+    console.error(e)
+  }
+}
+
+function renderCRM(customers, totalOrders, identifiedOrders) {
+  const el = document.getElementById('crmContent')
+  if (!customers.length) {
+    el.innerHTML = '<div class="empty-state">Nenhum cliente identificado ainda.<br><span style="font-size:12px;color:#555">Os dados aparecem quando clientes preenchem WhatsApp no cardápio.</span></div>'
+    return
+  }
+
+  const totalSpent   = customers.reduce((a, c) => a + c.totalSpent, 0)
+  const totalClients = customers.length
+  const idPct        = totalOrders ? Math.round(identifiedOrders / totalOrders * 100) : 0
+
+  const statusIcon = s => s === 'confirmed' ? '🟢' : s === 'cancelled' ? '🔴' : '🟡'
+
+  const cards = customers.map((c, i) => {
+    const initial   = (c.name || c.phone || '?')[0].toUpperCase()
+    const avgOrder  = c.confirmed > 0 ? c.totalSpent / c.confirmed : 0
+    const lastDate  = c.lastOrder ? c.lastOrder.toLocaleDateString('pt-BR') : '—'
+    const histItems = c.orders
+      .sort((a, b) => (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0))
+      .map(o => {
+        const date  = fmtDate(o.createdAt)
+        const items = (o.items || []).map(it => `${it.qty}x ${it.name}`).join(', ')
+        return `<div class="crm-history-item">
+          <span class="crm-history-status">${statusIcon(o.status)}</span>
+          <span class="crm-history-date">${date}</span>
+          <span class="crm-history-items">${items}</span>
+          <span class="crm-history-total">${fmtBRL(o.total)}</span>
+        </div>`
+      }).join('')
+
+    return `
+      <div class="crm-card" onclick="toggleCrmCard(this)">
+        <div class="crm-card-header">
+          <div class="crm-avatar">${initial}</div>
+          <div class="crm-info">
+            <div class="crm-customer-name">${c.name || '<span class="crm-anon">Sem nome</span>'}</div>
+            <div class="crm-phone">${c.phone || '—'}</div>
+          </div>
+          <div class="crm-metric">
+            <div class="crm-metric-val">${c.confirmed}</div>
+            <div class="crm-metric-label">pedidos</div>
+          </div>
+          <div class="crm-metric">
+            <div class="crm-metric-val">${fmtBRL(c.totalSpent)}</div>
+            <div class="crm-metric-label">faturado</div>
+          </div>
+          <div class="crm-metric">
+            <div class="crm-metric-val">${lastDate}</div>
+            <div class="crm-metric-label">último pedido</div>
+          </div>
+          <div class="crm-chevron">▼</div>
+        </div>
+        <div class="crm-history">${histItems}</div>
+      </div>`
+  }).join('')
+
+  el.innerHTML = `
+    <div class="crm-summary-bar">
+      <div class="crm-stat">
+        <div class="crm-stat-label">Clientes identificados</div>
+        <div class="crm-stat-val">${totalClients}</div>
+      </div>
+      <div class="crm-stat">
+        <div class="crm-stat-label">Faturação total (confirmados)</div>
+        <div class="crm-stat-val">${fmtBRL(totalSpent)}</div>
+      </div>
+      <div class="crm-stat">
+        <div class="crm-stat-label">Pedidos identificados</div>
+        <div class="crm-stat-val">${idPct}%</div>
+      </div>
+    </div>
+    <div class="crm-list">${cards}</div>
+  `
+}
+
+function toggleCrmCard(card) {
+  card.classList.toggle('open')
 }
 
 function exportExcel() {
