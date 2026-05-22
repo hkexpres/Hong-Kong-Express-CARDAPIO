@@ -477,6 +477,45 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   border-radius:14px;padding:20px;margin-bottom:24px;
 }
 .fin-chart-wrap{height:220px;position:relative}
+
+/* ── MASTER DE ARTÍCULOS ── */
+.add-item-form{
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  padding:14px 16px;background:rgba(255,255,255,0.03);
+  border:1px dashed rgba(255,255,255,0.12);border-radius:10px;
+  margin-bottom:16px;
+}
+.add-item-form input[type="text"],.add-item-form input[type="number"]{
+  background:var(--bg3);border:1px solid #333;border-radius:7px;
+  color:var(--white);font-size:13px;padding:8px 10px;outline:none;
+  transition:border .15s;
+}
+.add-item-form input[type="text"]{flex:1;min-width:160px}
+.add-item-form input[type="text"]:focus,.add-item-form input[type="number"]:focus{border-color:var(--yellow)}
+.add-item-form input[type="number"]{width:90px}
+.add-item-form select{
+  background:var(--bg3);border:1px solid #333;border-radius:7px;
+  color:var(--white);font-size:13px;padding:8px 10px;outline:none;cursor:pointer;
+}
+.btn-add-item{
+  padding:8px 16px;border-radius:7px;border:none;
+  background:rgba(240,232,112,0.15);color:var(--yellow);
+  font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;
+  transition:background .15s;
+}
+.btn-add-item:hover{background:rgba(240,232,112,0.25)}
+.btn-del-item{
+  background:none;border:none;color:#555;font-size:14px;
+  cursor:pointer;padding:4px 6px;border-radius:5px;transition:color .15s;
+  line-height:1;
+}
+.btn-del-item:hover{color:#F44336}
+.item-manual-tag{
+  font-size:9px;font-weight:700;color:#555;letter-spacing:.04em;
+  background:rgba(255,255,255,0.05);border-radius:4px;padding:1px 5px;
+  vertical-align:middle;margin-left:4px;
+}
+.item-from-order{color:var(--gray2);font-size:10px;margin-left:4px}
 </style>
 </head>
 <body>
@@ -599,7 +638,20 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
     <!-- Cost config -->
     <div class="fin-config-card">
       <div class="fin-config-title">Custo por Item</div>
-      <div class="fin-config-sub">Itens carregados do histórico de pedidos. Ingrese o custo de cada um — a categoria é detectada automaticamente. Os valores ficam salvos no navegador.</div>
+      <div class="fin-config-sub">Maestro de artículos — itens do histórico + adicionados manualmente. Defina categoria e custo de cada um. Os valores ficam salvos no navegador.</div>
+      <!-- Add item form -->
+      <div class="add-item-form">
+        <input type="text" id="newItemName" placeholder="Nome do item (ex: Agripicante Misto)">
+        <select id="newItemCat">
+          <option value="pratos">Pratos</option>
+          <option value="combos">Combos</option>
+          <option value="acomp">Acomp.</option>
+          <option value="bebidas">Bebidas</option>
+          <option value="molhos">Molhos</option>
+        </select>
+        <input type="number" id="newItemPrice" min="0" step="0.01" placeholder="Preço (R$)">
+        <button class="btn-add-item" id="addItemBtn">+ Adicionar</button>
+      </div>
       <div class="no-cost-warn" id="noCostWarn">⚠ Alguns itens sem custo configurado — a margem estará subestimada.</div>
       <div id="itemCostTableWrap"><div class="spinner">Carregando itens…</div></div>
       <button id="saveCostsBtn">Salvar custos</button>
@@ -1582,10 +1634,46 @@ function exportExcel() {
 }
 
 // ── FINANÇAS ──
-const ITEM_COST_KEY = 'hke_item_costs_v2'
+const ITEM_COST_KEY  = 'hke_item_costs_v2'
+const ITEM_CATS_KEY  = 'hke_item_cats_v1'
+const ITEM_MASTER_KEY = 'hke_items_master_v1'
 const CAT_LABELS = { pratos: 'Pratos', combos: 'Combos', acomp: 'Acomp.', bebidas: 'Bebidas', molhos: 'Molhos' }
 let finChart = null
 let cachedUniqueItems = null
+
+function loadManualItems() {
+  try { return JSON.parse(localStorage.getItem(ITEM_MASTER_KEY)) || [] } catch { return [] }
+}
+function persistManualItems(items) {
+  localStorage.setItem(ITEM_MASTER_KEY, JSON.stringify(items))
+}
+function addManualItem() {
+  const nameEl  = document.getElementById('newItemName')
+  const catEl   = document.getElementById('newItemCat')
+  const priceEl = document.getElementById('newItemPrice')
+  const name    = nameEl.value.trim()
+  if (!name) { nameEl.focus(); return }
+  const existing = loadManualItems()
+  if (existing.find(i => i.name.toLowerCase() === name.toLowerCase())) {
+    nameEl.select(); return
+  }
+  existing.push({ name, cat: catEl.value, price: parseFloat(priceEl.value) || null, manual: true })
+  persistManualItems(existing)
+  nameEl.value = ''; priceEl.value = ''
+  cachedUniqueItems = null  // invalidate cache
+  initFinancas()
+}
+function deleteManualItem(name) {
+  persistManualItems(loadManualItems().filter(i => i.name !== name))
+  // also remove its cost and category
+  const costs = loadItemCosts(); delete costs[name]; localStorage.setItem(ITEM_COST_KEY, JSON.stringify(costs))
+  const cats  = (() => { try { return JSON.parse(localStorage.getItem(ITEM_CATS_KEY)) || {} } catch { return {} } })()
+  delete cats[name]; localStorage.setItem(ITEM_CATS_KEY, JSON.stringify(cats))
+  cachedUniqueItems = null
+  initFinancas()
+}
+document.getElementById('addItemBtn').addEventListener('click', addManualItem)
+document.getElementById('newItemName').addEventListener('keydown', e => { if (e.key === 'Enter') addManualItem() })
 
 function loadItemCosts() {
   try { return JSON.parse(localStorage.getItem(ITEM_COST_KEY)) || {} } catch { return {} }
@@ -1628,11 +1716,18 @@ async function fetchUniqueItems() {
   const map = {}
   snap.docs.forEach(d => {
     ;(d.data().items || []).forEach(it => {
-      if (!map[it.name]) map[it.name] = { name: it.name, cat: classifyItem(it.name), price: it.price }
+      if (!map[it.name]) map[it.name] = { name: it.name, cat: classifyItem(it.name), price: it.price, manual: false }
     })
   })
+  // merge manual master items (don't overwrite Firestore items)
+  loadManualItems().forEach(it => {
+    if (!map[it.name]) map[it.name] = { ...it }
+  })
+  // apply saved category overrides
+  const savedCats = (() => { try { return JSON.parse(localStorage.getItem(ITEM_CATS_KEY)) || {} } catch { return {} } })()
+  Object.values(map).forEach(it => { if (savedCats[it.name]) it.cat = savedCats[it.name] })
+  const catOrder = ['pratos','combos','acomp','bebidas','molhos']
   cachedUniqueItems = Object.values(map).sort((a, b) => {
-    const catOrder = ['pratos','combos','acomp','bebidas','molhos']
     const ci = catOrder.indexOf(a.cat) - catOrder.indexOf(b.cat)
     return ci !== 0 ? ci : a.name.localeCompare(b.name)
   })
@@ -1645,9 +1740,6 @@ function renderCostConfig(items, costs) {
   const wrap = document.getElementById('itemCostTableWrap')
   if (!items.length) { wrap.innerHTML = '<div style="color:#666;font-size:13px">Nenhum item encontrado.</div>'; return }
 
-  // load any saved category overrides
-  const savedCats = (() => { try { return JSON.parse(localStorage.getItem('hke_item_cats_v1')) || {} } catch { return {} } })()
-
   let html = `<table class="item-cost-table">
     <thead><tr>
       <th>Item</th>
@@ -1657,20 +1749,30 @@ function renderCostConfig(items, costs) {
     </tr></thead><tbody>`
 
   items.forEach(it => {
-    const cat    = savedCats[it.name] || it.cat
+    const cat = it.cat  // already resolved by fetchUniqueItems
     const saved  = costs[it.name] !== undefined ? costs[it.name] : ''
     const catSel = Object.entries(CAT_LABELS).map(([k,v]) =>
       `<option value="${k}" ${cat===k?'selected':''}>${v}</option>`
     ).join('')
+    const nameDisplay = it.manual
+      ? `${it.name} <span class="item-manual-tag">manual</span>`
+      : it.name
+    const priceDisplay = it.price ? fmtBRL(it.price) : '<span style="color:#444">—</span>'
+    const delBtn = it.manual
+      ? `<button class="btn-del-item" onclick="deleteManualItem('${it.name.replace(/'/g,"\\'")}')" title="Eliminar">✕</button>`
+      : ''
     html += `<tr>
-      <td>${it.name}</td>
+      <td>${nameDisplay}</td>
       <td>
         <select class="cat-select" data-item="${it.name.replace(/"/g,'&quot;')}">
           ${catSel}
         </select>
       </td>
-      <td style="text-align:right;color:var(--gray)">${fmtBRL(it.price)}</td>
-      <td><input class="cost-input" type="number" data-item="${it.name.replace(/"/g,'&quot;')}" min="0" step="0.01" placeholder="0,00" value="${saved}"></td>
+      <td style="text-align:right;color:var(--gray)">${priceDisplay}</td>
+      <td style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+        <input class="cost-input" type="number" data-item="${it.name.replace(/"/g,'&quot;')}" min="0" step="0.01" placeholder="0,00" value="${saved}">
+        ${delBtn}
+      </td>
     </tr>`
   })
   html += '</tbody></table>'
