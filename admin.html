@@ -96,16 +96,20 @@ input{font-family:'Inter',sans-serif}
 
 /* ── DASHBOARD ── */
 .donuts-row{
-  display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px;
 }
-@media(max-width:700px){.donuts-row{grid-template-columns:1fr}}
+@media(max-width:900px){.donuts-row{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.donuts-row{grid-template-columns:1fr}}
 .donut-card{
   background:var(--bg2);border:1px solid rgba(144,64,64,0.3);border-radius:14px;
   padding:18px 16px;
 }
 .donut-card-title{
   font-family:'Montserrat',sans-serif;font-weight:900;font-size:11px;
-  letter-spacing:.15em;color:var(--red);margin-bottom:14px;text-transform:uppercase;
+  letter-spacing:.15em;color:var(--red);margin-bottom:2px;text-transform:uppercase;
+}
+.donut-card-dates{
+  font-size:11px;color:var(--gray2);margin-bottom:12px;letter-spacing:.01em;
 }
 .donut-wrap{position:relative;width:160px;height:160px;margin:0 auto 14px}
 .donut-center-text{
@@ -551,6 +555,7 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
     <div class="donuts-row">
       <div class="donut-card">
         <div class="donut-card-title">Semana Atual</div>
+        <div class="donut-card-dates" id="datesSemana"></div>
         <div class="donut-wrap">
           <canvas id="donutSemana"></canvas>
           <div class="donut-center-text" id="centerSemana"></div>
@@ -558,7 +563,17 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
         <div class="donut-legend" id="legendSemana"></div>
       </div>
       <div class="donut-card">
+        <div class="donut-card-title">Semana Anterior</div>
+        <div class="donut-card-dates" id="datesSemanaAnterior"></div>
+        <div class="donut-wrap">
+          <canvas id="donutSemanaAnterior"></canvas>
+          <div class="donut-center-text" id="centerSemanaAnterior"></div>
+        </div>
+        <div class="donut-legend" id="legendSemanaAnterior"></div>
+      </div>
+      <div class="donut-card">
         <div class="donut-card-title">Mês Atual</div>
+        <div class="donut-card-dates" id="datesMes"></div>
         <div class="donut-wrap">
           <canvas id="donutMes"></canvas>
           <div class="donut-center-text" id="centerMes"></div>
@@ -567,6 +582,7 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
       </div>
       <div class="donut-card">
         <div class="donut-card-title">Mês Anterior</div>
+        <div class="donut-card-dates" id="datesMesAnterior"></div>
         <div class="donut-wrap">
           <canvas id="donutMesAnterior"></canvas>
           <div class="donut-center-text" id="centerMesAnterior"></div>
@@ -750,7 +766,15 @@ const GROUP_COLORS = [
 ]
 
 // ── CHART INSTANCES ──
-let chartSemana = null, chartMes = null, chartMesAnterior = null, chartLine = null, detalheDonutChart = null
+let chartSemana = null, chartSemanaAnterior = null, chartMes = null, chartMesAnterior = null, chartLine = null, detalheDonutChart = null
+
+function fmtShort(d) {
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`
+}
+function setDateLabel(elId, from, to) {
+  const el = document.getElementById(elId)
+  if (el) el.textContent = `${fmtShort(from)} → ${fmtShort(to)}`
+}
 let allDashboardOrders = []
 let detalheSummaryData = []
 
@@ -881,21 +905,31 @@ async function initFinancas() {
 
 // ── DASHBOARD ──
 async function loadDashboard() {
-  const now   = new Date()
+  const now = new Date()
 
-  // Semana: Mon to today
+  // Semana atual: Mon → today
   const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1
   const weekStart = new Date(now); weekStart.setDate(now.getDate() - dayOfWeek); weekStart.setHours(0,0,0,0)
 
-  // Mês atual: 1st to now
+  // Semana anterior: Mon-7 → Sun
+  const prevWeekEnd   = new Date(weekStart); prevWeekEnd.setDate(weekStart.getDate() - 1); prevWeekEnd.setHours(23,59,59,999)
+  const prevWeekStart = new Date(weekStart); prevWeekStart.setDate(weekStart.getDate() - 7)
+
+  // Mês atual: 1st → today
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
 
-  // Mês anterior
+  // Mês anterior: 1st → last day
   const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   const prevMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
 
-  // 12 meses atrás
+  // 12 meses atrás (for line chart)
   const twelveAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+
+  // set date labels
+  setDateLabel('datesSemana',        weekStart,     now)
+  setDateLabel('datesSemanaAnterior',prevWeekStart, prevWeekEnd)
+  setDateLabel('datesMes',           monthStart,    now)
+  setDateLabel('datesMesAnterior',   prevMonthStart,prevMonthEnd)
 
   try {
     const snap = await db.collection('orders')
@@ -906,15 +940,18 @@ async function loadDashboard() {
       .filter(o => o.status === 'confirmed')
 
     const semanaOrders      = orders.filter(o => o.createdAt.toDate() >= weekStart)
+    const prevSemanaOrders  = orders.filter(o => {
+      const d = o.createdAt.toDate(); return d >= prevWeekStart && d <= prevWeekEnd
+    })
     const mesOrders         = orders.filter(o => o.createdAt.toDate() >= monthStart)
     const prevMesOrders     = orders.filter(o => {
-      const d = o.createdAt.toDate()
-      return d >= prevMonthStart && d <= prevMonthEnd
+      const d = o.createdAt.toDate(); return d >= prevMonthStart && d <= prevMonthEnd
     })
 
-    buildDonut('donutSemana', 'centerSemana', 'legendSemana', semanaOrders)
-    buildDonut('donutMes', 'centerMes', 'legendMes', mesOrders)
-    buildDonut('donutMesAnterior', 'centerMesAnterior', 'legendMesAnterior', prevMesOrders)
+    buildDonut('donutSemana',        'centerSemana',        'legendSemana',        semanaOrders)
+    buildDonut('donutSemanaAnterior','centerSemanaAnterior','legendSemanaAnterior', prevSemanaOrders)
+    buildDonut('donutMes',           'centerMes',           'legendMes',           mesOrders)
+    buildDonut('donutMesAnterior',   'centerMesAnterior',   'legendMesAnterior',   prevMesOrders)
     allDashboardOrders = orders
     buildLineChart(orders, 12)
   } catch(e) {
@@ -964,9 +1001,10 @@ function buildDonut(canvasId, centerId, legendId, orders) {
     legendEl.innerHTML = ''
     // draw empty grey ring
     const ctx = document.getElementById(canvasId).getContext('2d')
-    if (chartSemana && canvasId === 'donutSemana') { chartSemana.destroy(); chartSemana = null }
-    if (chartMes && canvasId === 'donutMes') { chartMes.destroy(); chartMes = null }
-    if (chartMesAnterior && canvasId === 'donutMesAnterior') { chartMesAnterior.destroy(); chartMesAnterior = null }
+    if (chartSemana        && canvasId === 'donutSemana')        { chartSemana.destroy();        chartSemana = null }
+    if (chartSemanaAnterior&& canvasId === 'donutSemanaAnterior'){ chartSemanaAnterior.destroy(); chartSemanaAnterior = null }
+    if (chartMes           && canvasId === 'donutMes')           { chartMes.destroy();           chartMes = null }
+    if (chartMesAnterior   && canvasId === 'donutMesAnterior')   { chartMesAnterior.destroy();   chartMesAnterior = null }
     new Chart(ctx, {
       type: 'doughnut',
       data: { datasets: [{ data: [1], backgroundColor: ['#222'], borderWidth: 0 }] },
@@ -1031,9 +1069,10 @@ function buildDonut(canvasId, centerId, legendId, orders) {
     },
     plugins: [ChartDataLabels]
   })
-  if (canvasId === 'donutSemana')      chartSemana = newChart
-  else if (canvasId === 'donutMes')    chartMes = newChart
-  else                                  chartMesAnterior = newChart
+  if      (canvasId === 'donutSemana')         chartSemana = newChart
+  else if (canvasId === 'donutSemanaAnterior') chartSemanaAnterior = newChart
+  else if (canvasId === 'donutMes')            chartMes = newChart
+  else                                          chartMesAnterior = newChart
 }
 
 function buildLineChart(orders, nMonths = 12) {
