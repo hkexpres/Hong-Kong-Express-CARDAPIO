@@ -359,17 +359,46 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   color:var(--yellow);margin-bottom:4px;
 }
 .fin-config-sub{font-size:12px;color:var(--gray2);margin-bottom:16px}
-.fin-config-grid{
-  display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;
+.item-cost-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
+.item-cost-table th{
+  padding:8px 12px;text-align:left;color:var(--gray);font-weight:600;
+  border-bottom:1px solid rgba(255,255,255,0.08);font-size:11px;
 }
-@media(max-width:700px){.fin-config-grid{grid-template-columns:repeat(2,1fr)}}
-.fin-input-group label{font-size:11px;color:var(--gray);display:block;margin-bottom:5px}
-.fin-input-group input{
-  width:100%;background:var(--bg3);border:1px solid #333;border-radius:8px;
-  color:var(--white);font-size:14px;padding:9px 10px;outline:none;
-  transition:border .15s;
+.item-cost-table th:last-child,.item-cost-table th:nth-child(3){text-align:right}
+.item-cost-table td{
+  padding:7px 12px;border-bottom:1px solid rgba(255,255,255,0.04);
+  color:var(--white);vertical-align:middle;
 }
-.fin-input-group input:focus{border-color:var(--yellow)}
+.item-cost-table td:last-child{text-align:right}
+.item-cost-table .group-header td{
+  background:rgba(255,255,255,0.03);color:var(--yellow);font-weight:700;
+  font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:10px 12px 6px;
+  border-bottom:none;
+}
+.cost-input{
+  width:90px;background:var(--bg3);border:1px solid #333;border-radius:7px;
+  color:var(--white);font-size:13px;padding:6px 9px;outline:none;
+  text-align:right;transition:border .15s;
+}
+.cost-input:focus{border-color:var(--yellow)}
+.cat-badge{
+  display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;
+}
+.cat-pratos{background:rgba(100,181,246,0.15);color:#64B5F6}
+.cat-combos{background:rgba(240,232,112,0.12);color:var(--yellow)}
+.cat-acomp{background:rgba(129,199,132,0.12);color:var(--green2)}
+.cat-bebidas{background:rgba(255,183,77,0.12);color:#FFB74D}
+.cat-molhos{background:rgba(186,104,200,0.12);color:#BA68C8}
+.cat-select{
+  background:var(--bg3);border:1px solid #333;border-radius:7px;
+  color:var(--white);font-size:12px;padding:5px 8px;outline:none;
+  cursor:pointer;transition:border .15s;
+}
+.cat-select:focus{border-color:var(--yellow)}
+.no-cost-warn{
+  font-size:11px;color:#FFB74D;margin-bottom:12px;display:none;
+}
+.no-cost-warn.visible{display:block}
 #saveCostsBtn{
   padding:9px 20px;border-radius:8px;border:none;
   background:var(--yellow);color:#000;font-family:'Montserrat',sans-serif;
@@ -569,30 +598,10 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   <div class="tab-content" id="tab-financas" style="display:none">
     <!-- Cost config -->
     <div class="fin-config-card">
-      <div class="fin-config-title">Custo por Categoria (por unidade vendida)</div>
-      <div class="fin-config-sub">Ingrese o custo médio de cada categoria. Os valores ficam salvos no navegador.</div>
-      <div class="fin-config-grid">
-        <div class="fin-input-group">
-          <label>Pratos</label>
-          <input type="number" id="costPratos" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="fin-input-group">
-          <label>Combos</label>
-          <input type="number" id="costCombos" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="fin-input-group">
-          <label>Acomp. (Gyoza)</label>
-          <input type="number" id="costAcomp" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="fin-input-group">
-          <label>Bebidas</label>
-          <input type="number" id="costBebidas" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="fin-input-group">
-          <label>Molhos</label>
-          <input type="number" id="costMolhos" min="0" step="0.01" placeholder="0,00">
-        </div>
-      </div>
+      <div class="fin-config-title">Custo por Item</div>
+      <div class="fin-config-sub">Itens carregados do histórico de pedidos. Ingrese o custo de cada um — a categoria é detectada automaticamente. Os valores ficam salvos no navegador.</div>
+      <div class="no-cost-warn" id="noCostWarn">⚠ Alguns itens sem custo configurado — a margem estará subestimada.</div>
+      <div id="itemCostTableWrap"><div class="spinner">Carregando itens…</div></div>
       <button id="saveCostsBtn">Salvar custos</button>
       <span class="fin-saved-msg" id="savedMsg">✓ Salvo</span>
     </div>
@@ -807,14 +816,15 @@ document.addEventListener('visibilitychange', () => {
   }
 })
 
-function initFinancas() {
-  fillCostInputs()
+async function initFinancas() {
   const now = new Date()
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
   if (!document.getElementById('finFrom').value)
     document.getElementById('finFrom').value = firstDay.toISOString().split('T')[0]
   if (!document.getElementById('finTo').value)
     document.getElementById('finTo').value = now.toISOString().split('T')[0]
+  const items = await fetchUniqueItems()
+  renderCostConfig(items, loadItemCosts())
 }
 
 // ── DASHBOARD ──
@@ -1572,36 +1582,103 @@ function exportExcel() {
 }
 
 // ── FINANÇAS ──
-const COST_KEY = 'hke_costs_v1'
-const COST_DEFAULTS = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0 }
+const ITEM_COST_KEY = 'hke_item_costs_v2'
+const CAT_LABELS = { pratos: 'Pratos', combos: 'Combos', acomp: 'Acomp.', bebidas: 'Bebidas', molhos: 'Molhos' }
 let finChart = null
+let cachedUniqueItems = null
 
-function loadCosts() {
-  try { return { ...COST_DEFAULTS, ...JSON.parse(localStorage.getItem(COST_KEY)) } } catch { return { ...COST_DEFAULTS } }
+function loadItemCosts() {
+  try { return JSON.parse(localStorage.getItem(ITEM_COST_KEY)) || {} } catch { return {} }
 }
-function saveCostsToStorage() {
-  const c = {
-    pratos:  parseFloat(document.getElementById('costPratos').value)  || 0,
-    combos:  parseFloat(document.getElementById('costCombos').value)  || 0,
-    acomp:   parseFloat(document.getElementById('costAcomp').value)   || 0,
-    bebidas: parseFloat(document.getElementById('costBebidas').value) || 0,
-    molhos:  parseFloat(document.getElementById('costMolhos').value)  || 0,
-  }
-  localStorage.setItem(COST_KEY, JSON.stringify(c))
+function saveItemCosts() {
+  const costs = {}
+  document.querySelectorAll('.cost-input[data-item]').forEach(inp => {
+    const v = parseFloat(inp.value)
+    if (!isNaN(v) && v >= 0) costs[inp.dataset.item] = v
+  })
+  localStorage.setItem(ITEM_COST_KEY, JSON.stringify(costs))
+
+  const cats = {}
+  document.querySelectorAll('.cat-select[data-item]').forEach(sel => {
+    cats[sel.dataset.item] = sel.value
+  })
+  localStorage.setItem('hke_item_cats_v1', JSON.stringify(cats))
+
   const msg = document.getElementById('savedMsg')
   msg.style.opacity = '1'
   setTimeout(() => { msg.style.opacity = '0' }, 2000)
-}
-function fillCostInputs() {
-  const c = loadCosts()
-  document.getElementById('costPratos').value  = c.pratos  || ''
-  document.getElementById('costCombos').value  = c.combos  || ''
-  document.getElementById('costAcomp').value   = c.acomp   || ''
-  document.getElementById('costBebidas').value = c.bebidas || ''
-  document.getElementById('costMolhos').value  = c.molhos  || ''
+  checkNoCostWarn(costs)
 }
 
-document.getElementById('saveCostsBtn').addEventListener('click', saveCostsToStorage)
+function getItemCat(itemName) {
+  try {
+    const saved = JSON.parse(localStorage.getItem('hke_item_cats_v1')) || {}
+    return saved[itemName] || classifyItem(itemName)
+  } catch { return classifyItem(itemName) }
+}
+function checkNoCostWarn(costs) {
+  if (!cachedUniqueItems) return
+  const missing = cachedUniqueItems.some(it => !(it.name in costs) || costs[it.name] === 0)
+  document.getElementById('noCostWarn').classList.toggle('visible', missing)
+}
+
+async function fetchUniqueItems() {
+  if (cachedUniqueItems) return cachedUniqueItems
+  const snap = await db.collection('orders').get()
+  const map = {}
+  snap.docs.forEach(d => {
+    ;(d.data().items || []).forEach(it => {
+      if (!map[it.name]) map[it.name] = { name: it.name, cat: classifyItem(it.name), price: it.price }
+    })
+  })
+  cachedUniqueItems = Object.values(map).sort((a, b) => {
+    const catOrder = ['pratos','combos','acomp','bebidas','molhos']
+    const ci = catOrder.indexOf(a.cat) - catOrder.indexOf(b.cat)
+    return ci !== 0 ? ci : a.name.localeCompare(b.name)
+  })
+  return cachedUniqueItems
+}
+
+const CAT_OPTIONS = Object.entries(CAT_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')
+
+function renderCostConfig(items, costs) {
+  const wrap = document.getElementById('itemCostTableWrap')
+  if (!items.length) { wrap.innerHTML = '<div style="color:#666;font-size:13px">Nenhum item encontrado.</div>'; return }
+
+  // load any saved category overrides
+  const savedCats = (() => { try { return JSON.parse(localStorage.getItem('hke_item_cats_v1')) || {} } catch { return {} } })()
+
+  let html = `<table class="item-cost-table">
+    <thead><tr>
+      <th>Item</th>
+      <th>Categoria</th>
+      <th style="text-align:right">Preço venda</th>
+      <th style="text-align:right">Custo (R$)</th>
+    </tr></thead><tbody>`
+
+  items.forEach(it => {
+    const cat    = savedCats[it.name] || it.cat
+    const saved  = costs[it.name] !== undefined ? costs[it.name] : ''
+    const catSel = Object.entries(CAT_LABELS).map(([k,v]) =>
+      `<option value="${k}" ${cat===k?'selected':''}>${v}</option>`
+    ).join('')
+    html += `<tr>
+      <td>${it.name}</td>
+      <td>
+        <select class="cat-select" data-item="${it.name.replace(/"/g,'&quot;')}">
+          ${catSel}
+        </select>
+      </td>
+      <td style="text-align:right;color:var(--gray)">${fmtBRL(it.price)}</td>
+      <td><input class="cost-input" type="number" data-item="${it.name.replace(/"/g,'&quot;')}" min="0" step="0.01" placeholder="0,00" value="${saved}"></td>
+    </tr>`
+  })
+  html += '</tbody></table>'
+  wrap.innerHTML = html
+  checkNoCostWarn(costs)
+}
+
+document.getElementById('saveCostsBtn').addEventListener('click', saveItemCosts)
 document.getElementById('finFilterBtn').addEventListener('click', loadFinancas)
 
 function pctPill(pct) {
@@ -1641,48 +1718,45 @@ async function loadFinancas() {
   }
 }
 
-function calcOrderFinance(order, costs) {
+function calcOrderFinance(order, itemCosts) {
   let receita = 0, custo = 0
   ;(order.items || []).forEach(it => {
-    const cat = classifyItem(it.name)
     receita += it.qty * it.price
-    custo   += it.qty * (costs[cat] || 0)
+    custo   += it.qty * (itemCosts[it.name] || 0)
   })
   return { receita, custo, lucro: receita - custo, margem: receita > 0 ? (receita - custo) / receita * 100 : 0 }
 }
 
 function renderFinancas(orders) {
   const el = document.getElementById('financasContent')
-  const costs = loadCosts()
+  const itemCosts = loadItemCosts()
 
   if (!orders.length) {
     el.innerHTML = '<div class="empty-state">Nenhum pedido confirmado no período.</div>'
     return
   }
 
-  // ── Per-order financials ──
-  const rows = orders.map(o => ({ ...o, fin: calcOrderFinance(o, costs) }))
+  const rows = orders.map(o => ({ ...o, fin: calcOrderFinance(o, itemCosts) }))
 
-  // ── KPIs ──
   const totReceita = rows.reduce((a, r) => a + r.fin.receita, 0)
   const totCusto   = rows.reduce((a, r) => a + r.fin.custo, 0)
   const totLucro   = totReceita - totCusto
   const totMargem  = totReceita > 0 ? totLucro / totReceita * 100 : 0
 
-  // ── By category ──
+  // ── Category breakdown (using real per-item costs) ──
   const catData = {}
   ITEM_GROUPS.forEach(g => { catData[g.key] = { label: g.label, qty: 0, receita: 0, custo: 0 } })
   orders.forEach(o => {
     ;(o.items || []).forEach(it => {
-      const cat = classifyItem(it.name)
+      const cat = getItemCat(it.name)
       if (!catData[cat]) return
       catData[cat].qty     += it.qty
       catData[cat].receita += it.qty * it.price
-      catData[cat].custo   += it.qty * (costs[cat] || 0)
+      catData[cat].custo   += it.qty * (itemCosts[it.name] || 0)
     })
   })
 
-  // ── By month (for chart) ──
+  // ── Monthly chart data ──
   const monthMap = {}
   rows.forEach(r => {
     const d   = r.createdAt.toDate()
@@ -1693,7 +1767,7 @@ function renderFinancas(orders) {
   })
   const months = Object.entries(monthMap).sort(([a],[b]) => a.localeCompare(b))
 
-  // ── By day for table ──
+  // ── By day ──
   const byDate = {}
   rows.forEach(r => {
     const date = fmtDate(r.createdAt)
@@ -1701,55 +1775,45 @@ function renderFinancas(orders) {
     byDate[date].push(r)
   })
 
-  // build category table rows
   const catRows = ITEM_GROUPS.map(g => {
     const d = catData[g.key]
+    if (d.receita === 0) return ''
     const lucro = d.receita - d.custo
     const marg  = d.receita > 0 ? lucro / d.receita * 100 : 0
-    if (d.receita === 0) return ''
     return `<tr>
       <td>${d.label}</td>
       <td>${d.qty}</td>
       <td>${fmtBRL(d.receita)}</td>
-      <td>${fmtBRL(d.custo)}</td>
-      <td style="color:${lucro >= 0 ? 'var(--green2)' : '#F44336'}">${fmtBRL(lucro)}</td>
+      <td style="color:#aaa">${fmtBRL(d.custo)}</td>
+      <td style="color:${lucro>=0?'var(--green2)':'#F44336'}">${fmtBRL(lucro)}</td>
       <td>${marginBarFill(marg)}</td>
     </tr>`
   }).join('')
-  const catTotalLucro = totLucro
-  const catTotalMarg  = totMargem
 
-  // build order table rows
   let orderRows = ''
   Object.entries(byDate).sort().forEach(([date, dayRows]) => {
     dayRows.forEach(r => {
       orderRows += `<tr>
-        <td>${date}</td>
-        <td>${fmtTime(r.createdAt)}</td>
+        <td>${date}</td><td>${fmtTime(r.createdAt)}</td>
         <td>${fmtBRL(r.fin.receita)}</td>
-        <td style="color:#888">${fmtBRL(r.fin.custo)}</td>
+        <td style="color:#aaa">${fmtBRL(r.fin.custo)}</td>
         <td style="color:${r.fin.lucro>=0?'var(--green2)':'#F44336'}">${fmtBRL(r.fin.lucro)}</td>
         <td>${pctPill(r.fin.margem)}</td>
       </tr>`
     })
-    const dayReceita = dayRows.reduce((a,r)=>a+r.fin.receita,0)
-    const dayCusto   = dayRows.reduce((a,r)=>a+r.fin.custo,0)
-    const dayLucro   = dayReceita - dayCusto
-    const dayMargem  = dayReceita > 0 ? dayLucro/dayReceita*100 : 0
+    const dr = dayRows.reduce((a,r)=>a+r.fin.receita,0)
+    const dc = dayRows.reduce((a,r)=>a+r.fin.custo,0)
+    const dl = dr - dc
     orderRows += `<tr class="fin-subtotal-row">
       <td colspan="2" style="text-align:right">Subtotal ${date}</td>
-      <td>${fmtBRL(dayReceita)}</td>
-      <td>${fmtBRL(dayCusto)}</td>
-      <td>${fmtBRL(dayLucro)}</td>
-      <td>${pctPill(dayMargem)}</td>
+      <td>${fmtBRL(dr)}</td><td>${fmtBRL(dc)}</td>
+      <td>${fmtBRL(dl)}</td><td>${pctPill(dr>0?dl/dr*100:0)}</td>
     </tr>`
   })
   orderRows += `<tr class="fin-grand-row">
     <td colspan="2" style="text-align:right">TOTAL GERAL</td>
-    <td>${fmtBRL(totReceita)}</td>
-    <td>${fmtBRL(totCusto)}</td>
-    <td>${fmtBRL(totLucro)}</td>
-    <td>${pctPill(totMargem)}</td>
+    <td>${fmtBRL(totReceita)}</td><td>${fmtBRL(totCusto)}</td>
+    <td>${fmtBRL(totLucro)}</td><td>${pctPill(totMargem)}</td>
   </tr>`
 
   el.innerHTML = `
@@ -1762,7 +1826,7 @@ function renderFinancas(orders) {
       <div class="fin-kpi">
         <div class="fin-kpi-label">Custo total</div>
         <div class="fin-kpi-val" style="color:#aaa">${fmtBRL(totCusto)}</div>
-        <div class="fin-kpi-sub">${(totCusto/totReceita*100).toFixed(1)}% da receita</div>
+        <div class="fin-kpi-sub">${totReceita>0?(totCusto/totReceita*100).toFixed(1):0}% da receita</div>
       </div>
       <div class="fin-kpi">
         <div class="fin-kpi-label">Lucro bruto</div>
@@ -1777,60 +1841,48 @@ function renderFinancas(orders) {
     </div>
 
     <div class="fin-section-title">Rentabilidade por Categoria</div>
-    <div style="overflow-x:auto">
-      <table class="fin-cat-table">
-        <thead><tr>
-          <th>Categoria</th><th style="text-align:right">Unidades</th>
-          <th style="text-align:right">Receita</th><th style="text-align:right">Custo</th>
-          <th style="text-align:right">Lucro</th><th style="text-align:right">Margem</th>
-        </tr></thead>
-        <tbody>
-          ${catRows}
-          <tr>
-            <td>TOTAL</td><td></td>
-            <td>${fmtBRL(totReceita)}</td><td>${fmtBRL(totCusto)}</td>
-            <td>${fmtBRL(catTotalLucro)}</td>
-            <td>${marginBarFill(catTotalMarg)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <div style="overflow-x:auto"><table class="fin-cat-table">
+      <thead><tr>
+        <th>Categoria</th><th style="text-align:right">Un.</th>
+        <th style="text-align:right">Receita</th><th style="text-align:right">Custo</th>
+        <th style="text-align:right">Lucro</th><th style="text-align:right">Margem</th>
+      </tr></thead>
+      <tbody>${catRows}
+        <tr><td>TOTAL</td><td></td>
+          <td>${fmtBRL(totReceita)}</td><td>${fmtBRL(totCusto)}</td>
+          <td>${fmtBRL(totLucro)}</td><td>${marginBarFill(totMargem)}</td>
+        </tr>
+      </tbody>
+    </table></div>
 
     <div class="fin-chart-card">
-      <div class="fin-section-title" style="margin-top:0">Evolução Mensal — Receita vs Custo vs Lucro</div>
+      <div class="fin-section-title" style="margin-top:0">Evolução Mensal — Receita · Custo · Lucro</div>
       <div class="fin-chart-wrap"><canvas id="finChart"></canvas></div>
     </div>
 
     <div class="fin-section-title">Detalhe por Pedido</div>
-    <div style="overflow-x:auto">
-      <table class="fin-orders-table">
-        <thead><tr>
-          <th>Data</th><th>Hora</th>
-          <th style="text-align:right">Receita</th>
-          <th style="text-align:right">Custo</th>
-          <th style="text-align:right">Lucro</th>
-          <th style="text-align:right">Margem</th>
-        </tr></thead>
-        <tbody>${orderRows}</tbody>
-      </table>
-    </div>
+    <div style="overflow-x:auto"><table class="fin-orders-table">
+      <thead><tr>
+        <th>Data</th><th>Hora</th>
+        <th style="text-align:right">Receita</th>
+        <th style="text-align:right">Custo</th>
+        <th style="text-align:right">Lucro</th>
+        <th style="text-align:right">Margem</th>
+      </tr></thead>
+      <tbody>${orderRows}</tbody>
+    </table></div>
   `
 
-  // build monthly chart
   if (finChart) { finChart.destroy(); finChart = null }
   const ctx = document.getElementById('finChart').getContext('2d')
-  const mLabels  = months.map(([,v]) => v.label)
-  const mReceita = months.map(([,v]) => v.receita)
-  const mCusto   = months.map(([,v]) => v.custo)
-  const mLucro   = months.map(([,v]) => v.receita - v.custo)
   finChart = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: mLabels,
+      labels: months.map(([,v]) => v.label),
       datasets: [
-        { label: 'Receita', data: mReceita, backgroundColor: 'rgba(240,232,112,0.25)', borderColor: '#F0E870', borderWidth: 2, borderRadius: 4 },
-        { label: 'Custo',   data: mCusto,   backgroundColor: 'rgba(244,67,54,0.20)',   borderColor: '#F44336', borderWidth: 2, borderRadius: 4 },
-        { label: 'Lucro',   data: mLucro,   backgroundColor: 'rgba(129,199,132,0.35)', borderColor: '#81C784', borderWidth: 2, borderRadius: 4 },
+        { label: 'Receita', data: months.map(([,v]) => v.receita), backgroundColor: 'rgba(240,232,112,0.25)', borderColor: '#F0E870', borderWidth: 2, borderRadius: 4 },
+        { label: 'Custo',   data: months.map(([,v]) => v.custo),   backgroundColor: 'rgba(244,67,54,0.20)',   borderColor: '#F44336', borderWidth: 2, borderRadius: 4 },
+        { label: 'Lucro',   data: months.map(([,v]) => v.receita - v.custo), backgroundColor: 'rgba(129,199,132,0.35)', borderColor: '#81C784', borderWidth: 2, borderRadius: 4 },
       ]
     },
     options: {
