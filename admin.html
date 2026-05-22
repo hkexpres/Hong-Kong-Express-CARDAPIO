@@ -269,6 +269,28 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   font-family:'Montserrat',sans-serif;font-weight:900;color:var(--yellow);
 }
 
+/* detalhe bottom: summary table + donut side by side */
+.detalhe-bottom{
+  display:grid;grid-template-columns:1fr 280px;gap:16px;margin-top:24px;
+  align-items:start;
+}
+@media(max-width:760px){.detalhe-bottom{grid-template-columns:1fr}}
+
+/* group filter checkboxes */
+.group-checks{
+  display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;
+  padding:10px 12px;background:var(--bg3);border-radius:8px;
+}
+.group-check-label{
+  display:flex;align-items:center;gap:6px;
+  font-size:13px;color:var(--gray);cursor:pointer;
+  padding:4px 8px;border-radius:6px;border:1px solid #2a2a2a;
+  transition:all .15s;user-select:none;
+}
+.group-check-label:hover{border-color:#444;color:var(--white)}
+.group-check-label input{accent-color:var(--yellow);cursor:pointer}
+.group-check-label input:checked ~ span{color:var(--white)}
+
 /* loading */
 .spinner{text-align:center;color:var(--gray);padding:40px;font-size:13px}
 </style>
@@ -420,7 +442,24 @@ function endOfDay(date) {
   return d
 }
 
-// ── DISH GROUPING ──
+// ── ITEM GROUPS FOR DETALHE TABLE ──
+const ITEM_GROUPS = [
+  { key: 'pratos',  label: 'Pratos'  },
+  { key: 'combos',  label: 'Combos'  },
+  { key: 'acomp',   label: 'Acomp.'  },
+  { key: 'bebidas', label: 'Bebidas' },
+  { key: 'molhos',  label: 'Molhos'  },
+]
+function classifyItem(name) {
+  const n = name.toLowerCase()
+  if (n.includes('gyoza'))                                           return 'acomp'
+  if (n.startsWith('combo'))                                         return 'combos'
+  if (n.includes('cerveja') || n.includes('refrigerante'))          return 'bebidas'
+  if (n.includes('molho')   || n.includes('salsa'))                 return 'molhos'
+  return 'pratos'
+}
+
+// ── DISH GROUPING (donas dashboard) ──
 const GROUPS = [
   { name: 'Chow Fan',       test: n => n.includes('chow fan') },
   { name: 'Chow Mein',      test: n => n.includes('chow mein') },
@@ -446,8 +485,9 @@ const GROUP_COLORS = [
 ]
 
 // ── CHART INSTANCES ──
-let chartSemana = null, chartMes = null, chartMesAnterior = null, chartLine = null
+let chartSemana = null, chartMes = null, chartMesAnterior = null, chartLine = null, detalheDonutChart = null
 let allDashboardOrders = []
+let detalheSummaryData = []
 
 // ── AUTH ──
 document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -740,7 +780,15 @@ function buildLineChart(orders, nMonths = 12) {
           borderColor: '#333',
           borderWidth: 1,
           titleColor: '#fff',
-          bodyColor: '#ccc'
+          bodyColor: '#ccc',
+          callbacks: {
+            afterBody: (items) => {
+              const brlVal = items.find(i => i.datasetIndex === 0)?.raw || 0
+              const qtyVal = items.find(i => i.datasetIndex === 1)?.raw || 0
+              if (qtyVal > 0) return ['', `Méd/prato: ${fmtBRL(brlVal / qtyVal)}`]
+              return []
+            }
+          }
         }
       }
     }
@@ -863,120 +911,229 @@ function renderDetalhe(orders) {
   const el = document.getElementById('detalheContent')
   if (!orders.length) {
     el.innerHTML = '<div class="empty-state">Nenhum pedido confirmado no período.</div>'
+    detalheSummaryData = []
     return
   }
 
-  // build rows: one row per item in each order
-  const rows = []
+  // One row per order with group breakdown
+  const orderRows = orders.map(o => {
+    const g = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0 }
+    ;(o.items || []).forEach(it => { g[classifyItem(it.name)] += it.qty * it.price })
+    return { date: fmtDate(o.createdAt), time: fmtTime(o.createdAt), total: o.total || 0, ...g }
+  })
+
+  // Date subtotals
+  const byDate = {}
+  orderRows.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0, total: 0 }
+    ITEM_GROUPS.forEach(g => { byDate[r.date][g.key] += r[g.key] })
+    byDate[r.date].total += r.total
+  })
+
+  // Grand totals
+  const grand = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0, total: 0 }
+  orderRows.forEach(r => {
+    ITEM_GROUPS.forEach(g => { grand[g.key] += r[g.key] })
+    grand.total += r.total
+  })
+
+  // Summary data for the bottom section
+  const summaryMap = {}
   orders.forEach(o => {
     ;(o.items || []).forEach(it => {
-      rows.push({
-        date: fmtDate(o.createdAt),
-        time: fmtTime(o.createdAt),
-        dish: it.name,
-        qty: it.qty,
-        unitPrice: it.price,
-        subtotal: it.qty * it.price,
-        orderId: o.id,
-        orderTotal: o.total
-      })
+      if (!summaryMap[it.name]) summaryMap[it.name] = { qty: 0, total: 0, group: classifyItem(it.name) }
+      summaryMap[it.name].qty   += it.qty
+      summaryMap[it.name].total += it.qty * it.price
     })
   })
+  detalheSummaryData = Object.entries(summaryMap)
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a, b) => b.total - a.total)
 
-  // group by date for subtotals
-  const byDate = {}
-  rows.forEach(r => {
-    if (!byDate[r.date]) byDate[r.date] = []
-    byDate[r.date].push(r)
-  })
+  // Helper: format a group cell
+  const gFmt = v => v > 0
+    ? `<span style="color:#F0E870;font-weight:600">${fmtBRL(v)}</span>`
+    : `<span style="color:#333">—</span>`
 
+  // Build pivot table rows
   let tableRows = ''
-  let grandTotal = 0
-  Object.entries(byDate).sort().forEach(([date, dateRows]) => {
-    const dateSubtotal = dateRows.reduce((a, r) => a + r.subtotal, 0)
-    grandTotal += dateSubtotal
-    dateRows.forEach(r => {
+  Object.entries(byDate).sort().forEach(([date, sub]) => {
+    orderRows.filter(r => r.date === date).forEach(r => {
       tableRows += `<tr>
-        <td>${r.date}</td>
-        <td>${r.time}</td>
-        <td>${r.dish}</td>
-        <td style="text-align:center">${r.qty}</td>
-        <td style="text-align:right">${fmtBRL(r.unitPrice)}</td>
-        <td style="text-align:right;color:#F0E870;font-weight:600">${fmtBRL(r.subtotal)}</td>
+        <td>${r.date}</td><td>${r.time}</td>
+        ${ITEM_GROUPS.map(g => `<td style="text-align:right">${gFmt(r[g.key])}</td>`).join('')}
+        <td style="text-align:right;font-weight:700">${fmtBRL(r.total)}</td>
       </tr>`
     })
     tableRows += `<tr class="subtotal-row">
-      <td colspan="5" style="text-align:right">Subtotal ${date}</td>
-      <td style="text-align:right">${fmtBRL(dateSubtotal)}</td>
+      <td colspan="2" style="text-align:right">Subtotal ${date}</td>
+      ${ITEM_GROUPS.map(g => `<td style="text-align:right">${sub[g.key] > 0 ? fmtBRL(sub[g.key]) : '—'}</td>`).join('')}
+      <td style="text-align:right">${fmtBRL(sub.total)}</td>
     </tr>`
   })
   tableRows += `<tr class="grand-total-row">
-    <td colspan="5" style="text-align:right">TOTAL GERAL</td>
-    <td style="text-align:right">${fmtBRL(grandTotal)}</td>
+    <td colspan="2" style="text-align:right">TOTAL GERAL</td>
+    ${ITEM_GROUPS.map(g => `<td style="text-align:right">${grand[g.key] > 0 ? fmtBRL(grand[g.key]) : '—'}</td>`).join('')}
+    <td style="text-align:right">${fmtBRL(grand.total)}</td>
   </tr>`
 
-  // summary by dish
-  const byDish = {}
-  rows.forEach(r => {
-    if (!byDish[r.dish]) byDish[r.dish] = { qty: 0, total: 0 }
-    byDish[r.dish].qty   += r.qty
-    byDish[r.dish].total += r.subtotal
-  })
-  const dishRows = Object.entries(byDish)
-    .sort((a, b) => b[1].total - a[1].total)
-    .map(([dish, v]) => `<tr>
-      <td>${dish}</td>
-      <td>${v.qty}</td>
-      <td style="text-align:right">${fmtBRL(v.total)}</td>
-    </tr>`)
-    .join('')
+  const gHeaders = ITEM_GROUPS.map(g => `<th style="text-align:right">${g.label}</th>`).join('')
 
   el.innerHTML = `
     <div class="detalhe-table-wrap">
       <table>
-        <thead>
-          <tr>
-            <th>Data</th><th>Hora</th><th>Prato</th>
-            <th style="text-align:center">Qtd</th>
-            <th style="text-align:right">Unit.</th>
-            <th style="text-align:right">Subtotal</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th>Data</th><th>Hora</th>${gHeaders}
+          <th style="text-align:right">Total</th>
+        </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
     </div>
-    <div class="summary-section">
+    <div class="detalhe-bottom">
       <div class="summary-card">
-        <div class="summary-card-title">Subtotal por prato</div>
-        <table class="summary-table">
-          <thead><tr><td style="color:#666">Prato</td><td style="color:#666">Qtd</td><td style="text-align:right;color:#666">Total</td></tr></thead>
-          <tbody>${dishRows}<tr><td colspan="2"><strong>TOTAL</strong></td><td style="text-align:right">${fmtBRL(grandTotal)}</td></tr></tbody>
-        </table>
+        <div class="summary-card-title">Subtotal por item</div>
+        <div class="group-checks" id="groupChecks">
+          ${ITEM_GROUPS.map(g => `
+            <label class="group-check-label">
+              <input type="checkbox" value="${g.key}" ${g.key !== 'bebidas' && g.key !== 'molhos' ? 'checked' : ''}>
+              <span>${g.label}</span>
+            </label>`).join('')}
+        </div>
+        <div id="summaryTableWrap"></div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card-title">Participação</div>
+        <div class="donut-wrap" style="width:180px;height:180px;margin:0 auto 12px">
+          <canvas id="detalheDonut"></canvas>
+          <div class="donut-center-text" id="detalheDonutCenter"></div>
+        </div>
+        <div class="donut-legend" id="detalheDonutLegend"></div>
       </div>
     </div>
   `
+
+  document.querySelectorAll('#groupChecks input').forEach(cb => {
+    cb.addEventListener('change', updateSummarySection)
+  })
+  updateSummarySection()
+}
+
+function updateSummarySection() {
+  const checked = Array.from(document.querySelectorAll('#groupChecks input:checked')).map(cb => cb.value)
+  const filtered = detalheSummaryData.filter(d => checked.includes(d.group))
+  const total = filtered.reduce((a, d) => a + d.total, 0)
+
+  const wrap = document.getElementById('summaryTableWrap')
+  if (!wrap) return
+
+  if (!filtered.length) {
+    wrap.innerHTML = '<div style="color:#666;font-size:13px;padding:12px 0">Nenhum grupo selecionado.</div>'
+    buildDetalheDonut([])
+    return
+  }
+
+  const rows = filtered.map(d => `<tr>
+    <td>${d.name}</td>
+    <td style="text-align:center">${d.qty}</td>
+    <td style="text-align:right;color:#F0E870;font-weight:600">${fmtBRL(d.total)}</td>
+  </tr>`).join('')
+
+  wrap.innerHTML = `
+    <table class="summary-table">
+      <thead><tr>
+        <td style="color:#666">Item</td>
+        <td style="color:#666;text-align:center">Qtd</td>
+        <td style="color:#666;text-align:right">Total</td>
+      </tr></thead>
+      <tbody>${rows}
+        <tr><td colspan="2"><strong>TOTAL</strong></td>
+          <td style="text-align:right;color:#F0E870;font-weight:900">${fmtBRL(total)}</td>
+        </tr>
+      </tbody>
+    </table>`
+
+  buildDetalheDonut(filtered)
+}
+
+function buildDetalheDonut(data) {
+  const canvas = document.getElementById('detalheDonut')
+  const centerEl = document.getElementById('detalheDonutCenter')
+  const legendEl = document.getElementById('detalheDonutLegend')
+  if (!canvas) return
+  if (detalheDonutChart) { detalheDonutChart.destroy(); detalheDonutChart = null }
+
+  if (!data.length) {
+    if (centerEl) centerEl.innerHTML = '<span style="color:#666;font-size:12px">Sem dados</span>'
+    if (legendEl) legendEl.innerHTML = ''
+    return
+  }
+
+  const top    = data.slice(0, 10)
+  const total  = top.reduce((a, d) => a + d.total, 0)
+  const labels = top.map(d => d.name.length > 22 ? d.name.slice(0, 22) + '…' : d.name)
+  const values = top.map(d => d.total)
+  const colors = top.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
+
+  if (centerEl) centerEl.innerHTML = `<div class="donut-center-val" style="font-size:12px">${fmtBRL(total)}</div>`
+
+  const ctx = canvas.getContext('2d')
+  detalheDonutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: '#111', borderWidth: 2, hoverOffset: 4 }] },
+    options: {
+      cutout: '65%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${c.label}: ${fmtBRL(c.raw)} (${Math.round(c.raw / total * 100)}%)` } },
+        datalabels: {
+          color: '#000', font: { weight: 'bold', size: 10 },
+          formatter: v => { const p = Math.round(v / total * 100); return p >= 6 ? p + '%' : '' }
+        }
+      }
+    },
+    plugins: [ChartDataLabels]
+  })
+
+  if (legendEl) {
+    legendEl.innerHTML = top.map((d, i) => `
+      <div class="legend-item">
+        <span class="legend-dot" style="background:${colors[i]}"></span>
+        <span class="legend-name" style="font-size:11px">${d.name.length > 18 ? d.name.slice(0, 18) + '…' : d.name}</span>
+        <span class="legend-pct">${Math.round(d.total / total * 100)}%</span>
+      </div>`).join('')
+  }
 }
 
 function exportExcel() {
   if (!detalheOrders.length) { alert('Filtre um período primeiro.'); return }
 
-  const rows = [['Data', 'Hora', 'Prato', 'Qtd', 'Preço Unit.', 'Subtotal']]
+  const header = ['Data', 'Hora', ...ITEM_GROUPS.map(g => g.label), 'Total']
+  const rows   = [header]
+
   const byDate = {}
   detalheOrders.forEach(o => {
     const date = fmtDate(o.createdAt)
     const time = fmtTime(o.createdAt)
-    ;(o.items || []).forEach(it => {
-      rows.push([date, time, it.name, it.qty, it.price, it.qty * it.price])
-      if (!byDate[date]) byDate[date] = 0
-      byDate[date] += it.qty * it.price
-    })
-    rows.push([`--- Subtotal ${date} ---`, '', '', '', '', byDate[date]])
+    const g = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0 }
+    ;(o.items || []).forEach(it => { g[classifyItem(it.name)] += it.qty * it.price })
+    rows.push([date, time, ...ITEM_GROUPS.map(gr => g[gr.key] || ''), o.total || 0])
+    if (!byDate[date]) byDate[date] = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0, total: 0 }
+    ITEM_GROUPS.forEach(gr => { byDate[date][gr.key] += g[gr.key] })
+    byDate[date].total += o.total || 0
   })
-  const grandTotal = detalheOrders.reduce((a, o) => a + (o.total || 0), 0)
-  rows.push(['TOTAL GERAL', '', '', '', '', grandTotal])
+
+  Object.entries(byDate).sort().forEach(([date, sub]) => {
+    rows.push([`--- Subtotal ${date} ---`, '', ...ITEM_GROUPS.map(g => sub[g.key] || ''), sub.total])
+  })
+  const grand = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0, total: 0 }
+  detalheOrders.forEach(o => {
+    ;(o.items || []).forEach(it => { grand[classifyItem(it.name)] += it.qty * it.price })
+    grand.total += o.total || 0
+  })
+  rows.push(['TOTAL GERAL', '', ...ITEM_GROUPS.map(g => grand[g.key] || ''), grand.total])
 
   const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 35 }, { wch: 6 }, { wch: 12 }, { wch: 12 }]
+  ws['!cols'] = [{ wch: 12 }, { wch: 8 }, ...ITEM_GROUPS.map(() => ({ wch: 14 })), { wch: 14 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Pedidos')
 
