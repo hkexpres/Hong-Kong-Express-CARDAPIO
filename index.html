@@ -625,6 +625,16 @@ body.has-cart{padding-bottom:78px}
   border:1px solid rgba(240,232,112,0.2);
 }
 .crm-form{margin-bottom:14px}
+.crm-form-header{
+  font-size:13px;font-weight:600;color:#AAAAAA;
+  margin-bottom:10px;
+  display:flex;align-items:center;gap:6px;
+}
+.crm-form-optional{
+  font-size:11px;font-weight:400;color:#666;
+  background:rgba(255,255,255,0.05);
+  padding:2px 7px;border-radius:10px;
+}
 .crm-form input{
   display:block;width:100%;padding:10px 12px;margin-bottom:8px;
   background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;
@@ -634,8 +644,13 @@ body.has-cart{padding-bottom:78px}
 .crm-form input:focus{border-color:#904040}
 .crm-form input::placeholder{color:#555}
 .crm-legend{
-  font-size:11px;color:#666;line-height:1.5;
-  text-align:center;padding:0 4px;
+  font-size:13px;font-weight:600;
+  color:#F0E870;
+  line-height:1.5;text-align:center;
+  padding:10px 12px;
+  background:rgba(240,232,112,0.08);
+  border:1px solid rgba(240,232,112,0.2);
+  border-radius:8px;
 }
 .modal-btn-back{
   flex:1;padding:13px;border-radius:10px;
@@ -1167,9 +1182,12 @@ body.has-cart{padding-bottom:78px}
     </div>
     <!-- Novo cliente: campos opcionais -->
     <div class="crm-form" id="crmForm">
-      <input type="tel" id="crmPhone" placeholder="Seu WhatsApp (ex: 84 99999-9999)" inputmode="tel" autocomplete="tel">
-      <input type="text" id="crmName" placeholder="Seu nome (opcional)" autocomplete="name">
-      <div class="crm-legend">Deixe seus dados para receber cupons com desconto e promoções</div>
+      <div class="crm-legend">🎁 Deixe seus dados para receber cupons com desconto e promoções</div>
+      <div class="crm-form-header">
+        Seus dados <span class="crm-form-optional">opcional — pule se preferir</span>
+      </div>
+      <input type="tel" id="crmPhone" placeholder="WhatsApp (ex: 84 99999-9999)" inputmode="tel" autocomplete="tel">
+      <input type="text" id="crmName" placeholder="Seu nome" autocomplete="name">
     </div>
     <div class="modal-spinner" id="modalSpinner">Registrando pedido…</div>
     <div class="modal-actions" id="modalActions">
