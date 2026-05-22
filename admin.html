@@ -707,12 +707,16 @@ async function loadDashboard() {
 }
 
 // count real food portions: excludes molhos/bebidas, expands combo components
+// gyoza inside a combo is accompaniment — only non-gyoza parts count as platos
 function countPorcoes(items) {
   return (items || []).reduce((sum, it) => {
     const n = it.name.toLowerCase()
     if (n.includes('molho') || n.includes('salsa'))          return sum
     if (n.includes('cerveja') || n.includes('refrigerante')) return sum
-    if (n.includes(' + ')) return sum + it.qty * it.name.split(' + ').length
+    if (n.includes(' + ')) {
+      const mainParts = it.name.split(' + ').filter(p => !p.toLowerCase().includes('gyoza'))
+      return sum + it.qty * Math.max(mainParts.length, 1)
+    }
     return sum + it.qty
   }, 0)
 }
