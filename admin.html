@@ -706,6 +706,17 @@ async function loadDashboard() {
   }
 }
 
+// count real food portions: excludes molhos/bebidas, expands combo components
+function countPorcoes(items) {
+  return (items || []).reduce((sum, it) => {
+    const n = it.name.toLowerCase()
+    if (n.includes('molho') || n.includes('salsa'))          return sum
+    if (n.includes('cerveja') || n.includes('refrigerante')) return sum
+    if (n.includes(' + ')) return sum + it.qty * it.name.split(' + ').length
+    return sum + it.qty
+  }, 0)
+}
+
 function calcGroups(orders) {
   const groups = {}
   let totalPlatos = 0
@@ -716,9 +727,9 @@ function calcGroups(orders) {
       if (!groups[g]) groups[g] = { qty: 0, total: 0 }
       groups[g].qty   += it.qty
       groups[g].total += it.qty * it.price
-      totalPlatos     += it.qty
       totalBRL        += it.qty * it.price
     })
+    totalPlatos += countPorcoes(o.items)
   })
   return { groups, totalPlatos, totalBRL }
 }
@@ -825,7 +836,7 @@ function buildLineChart(orders, nMonths = 12) {
       const d = o.createdAt.toDate()
       return d.getFullYear() === m.year && d.getMonth() === m.month
     })
-    return mo.reduce((a, o) => a + (o.items || []).reduce((b, it) => b + it.qty, 0), 0)
+    return mo.reduce((a, o) => a + countPorcoes(o.items), 0)
   })
 
   if (chartLine) chartLine.destroy()
