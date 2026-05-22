@@ -513,8 +513,8 @@ const ITEM_GROUPS = [
 ]
 function classifyItem(name) {
   const n = name.toLowerCase()
+  if (n.startsWith('combo') || n.includes('combo'))                 return 'combos'
   if (n.includes('gyoza'))                                           return 'acomp'
-  if (n.startsWith('combo'))                                         return 'combos'
   if (n.includes('cerveja') || n.includes('refrigerante'))          return 'bebidas'
   if (n.includes('molho')   || n.includes('salsa'))                 return 'molhos'
   return 'pratos'
@@ -1024,25 +1024,38 @@ function renderDetalhe(orders) {
     return
   }
 
-  // One row per order with group breakdown
+  // One row per order with group breakdown (qty + BRL per group)
+  const mkGroup = () => Object.fromEntries(ITEM_GROUPS.map(g => [g.key, { qty: 0, brl: 0 }]))
   const orderRows = orders.map(o => {
-    const g = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0 }
-    ;(o.items || []).forEach(it => { g[classifyItem(it.name)] += it.qty * it.price })
+    const g = mkGroup()
+    ;(o.items || []).forEach(it => {
+      const k = classifyItem(it.name)
+      g[k].qty += it.qty
+      g[k].brl += it.qty * it.price
+    })
     return { date: fmtDate(o.createdAt), time: fmtTime(o.createdAt), total: o.total || 0, ...g }
   })
 
   // Date subtotals
   const byDate = {}
   orderRows.forEach(r => {
-    if (!byDate[r.date]) byDate[r.date] = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0, total: 0 }
-    ITEM_GROUPS.forEach(g => { byDate[r.date][g.key] += r[g.key] })
+    if (!byDate[r.date]) {
+      byDate[r.date] = { ...mkGroup(), total: 0 }
+    }
+    ITEM_GROUPS.forEach(g => {
+      byDate[r.date][g.key].qty += r[g.key].qty
+      byDate[r.date][g.key].brl += r[g.key].brl
+    })
     byDate[r.date].total += r.total
   })
 
   // Grand totals
-  const grand = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0, total: 0 }
+  const grand = { ...mkGroup(), total: 0 }
   orderRows.forEach(r => {
-    ITEM_GROUPS.forEach(g => { grand[g.key] += r[g.key] })
+    ITEM_GROUPS.forEach(g => {
+      grand[g.key].qty += r[g.key].qty
+      grand[g.key].brl += r[g.key].brl
+    })
     grand.total += r.total
   })
 
@@ -1059,10 +1072,13 @@ function renderDetalhe(orders) {
     .map(([name, v]) => ({ name, ...v }))
     .sort((a, b) => b.total - a.total)
 
-  // Helper: format a group cell
-  const gFmt = v => v > 0
-    ? `<span style="color:#F0E870;font-weight:600">${fmtBRL(v)}</span>`
+  // Helper: format a group cell (qty + BRL)
+  const gFmt = v => v.brl > 0
+    ? `<span style="color:#F0E870;font-weight:600">${fmtBRL(v.brl)}</span><br><span style="color:#888;font-size:11px">${v.qty} un</span>`
     : `<span style="color:#333">—</span>`
+  const gFmtSub = v => v.brl > 0
+    ? `${fmtBRL(v.brl)}<br><span style="color:#aaa;font-size:11px">${v.qty} un</span>`
+    : '—'
 
   // Build pivot table rows
   let tableRows = ''
@@ -1070,19 +1086,19 @@ function renderDetalhe(orders) {
     orderRows.filter(r => r.date === date).forEach(r => {
       tableRows += `<tr>
         <td>${r.date}</td><td>${r.time}</td>
-        ${ITEM_GROUPS.map(g => `<td style="text-align:right">${gFmt(r[g.key])}</td>`).join('')}
+        ${ITEM_GROUPS.map(g => `<td style="text-align:right;line-height:1.6">${gFmt(r[g.key])}</td>`).join('')}
         <td style="text-align:right;font-weight:700">${fmtBRL(r.total)}</td>
       </tr>`
     })
     tableRows += `<tr class="subtotal-row">
       <td colspan="2" style="text-align:right">Subtotal ${date}</td>
-      ${ITEM_GROUPS.map(g => `<td style="text-align:right">${sub[g.key] > 0 ? fmtBRL(sub[g.key]) : '—'}</td>`).join('')}
+      ${ITEM_GROUPS.map(g => `<td style="text-align:right;line-height:1.6">${gFmtSub(sub[g.key])}</td>`).join('')}
       <td style="text-align:right">${fmtBRL(sub.total)}</td>
     </tr>`
   })
   tableRows += `<tr class="grand-total-row">
     <td colspan="2" style="text-align:right">TOTAL GERAL</td>
-    ${ITEM_GROUPS.map(g => `<td style="text-align:right">${grand[g.key] > 0 ? fmtBRL(grand[g.key]) : '—'}</td>`).join('')}
+    ${ITEM_GROUPS.map(g => `<td style="text-align:right;line-height:1.6">${gFmtSub(grand[g.key])}</td>`).join('')}
     <td style="text-align:right">${fmtBRL(grand.total)}</td>
   </tr>`
 
@@ -1339,33 +1355,45 @@ function toggleCrmCard(card) {
 function exportExcel() {
   if (!detalheOrders.length) { alert('Filtre um período primeiro.'); return }
 
-  const header = ['Data', 'Hora', ...ITEM_GROUPS.map(g => g.label), 'Total']
+  // Header: Data | Hora | [Group Qtd | Group R$] x5 | Total
+  const groupCols = ITEM_GROUPS.flatMap(g => [`${g.label} Qtd`, `${g.label} R$`])
+  const header = ['Data', 'Hora', ...groupCols, 'Total']
   const rows   = [header]
+
+  const mkG = () => Object.fromEntries(ITEM_GROUPS.map(g => [g.key, { qty: 0, brl: 0 }]))
 
   const byDate = {}
   detalheOrders.forEach(o => {
     const date = fmtDate(o.createdAt)
     const time = fmtTime(o.createdAt)
-    const g = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0 }
-    ;(o.items || []).forEach(it => { g[classifyItem(it.name)] += it.qty * it.price })
-    rows.push([date, time, ...ITEM_GROUPS.map(gr => g[gr.key] || ''), o.total || 0])
-    if (!byDate[date]) byDate[date] = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0, total: 0 }
-    ITEM_GROUPS.forEach(gr => { byDate[date][gr.key] += g[gr.key] })
+    const g = mkG()
+    ;(o.items || []).forEach(it => {
+      const k = classifyItem(it.name)
+      g[k].qty += it.qty
+      g[k].brl += it.qty * it.price
+    })
+    rows.push([date, time, ...ITEM_GROUPS.flatMap(gr => [g[gr.key].qty || '', g[gr.key].brl || '']), o.total || 0])
+    if (!byDate[date]) byDate[date] = { ...mkG(), total: 0 }
+    ITEM_GROUPS.forEach(gr => { byDate[date][gr.key].qty += g[gr.key].qty; byDate[date][gr.key].brl += g[gr.key].brl })
     byDate[date].total += o.total || 0
   })
 
   Object.entries(byDate).sort().forEach(([date, sub]) => {
-    rows.push([`--- Subtotal ${date} ---`, '', ...ITEM_GROUPS.map(g => sub[g.key] || ''), sub.total])
+    rows.push([`Subtotal ${date}`, '', ...ITEM_GROUPS.flatMap(g => [sub[g.key].qty || '', sub[g.key].brl || '']), sub.total])
   })
-  const grand = { pratos: 0, combos: 0, acomp: 0, bebidas: 0, molhos: 0, total: 0 }
+  const grand = { ...mkG(), total: 0 }
   detalheOrders.forEach(o => {
-    ;(o.items || []).forEach(it => { grand[classifyItem(it.name)] += it.qty * it.price })
+    ;(o.items || []).forEach(it => {
+      const k = classifyItem(it.name)
+      grand[k].qty += it.qty
+      grand[k].brl += it.qty * it.price
+    })
     grand.total += o.total || 0
   })
-  rows.push(['TOTAL GERAL', '', ...ITEM_GROUPS.map(g => grand[g.key] || ''), grand.total])
+  rows.push(['TOTAL GERAL', '', ...ITEM_GROUPS.flatMap(g => [grand[g.key].qty || '', grand[g.key].brl || '']), grand.total])
 
   const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 12 }, { wch: 8 }, ...ITEM_GROUPS.map(() => ({ wch: 14 })), { wch: 14 }]
+  ws['!cols'] = [{ wch: 12 }, { wch: 8 }, ...ITEM_GROUPS.flatMap(() => [{ wch: 8 }, { wch: 12 }]), { wch: 14 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Pedidos')
 
