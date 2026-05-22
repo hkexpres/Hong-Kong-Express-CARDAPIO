@@ -513,10 +513,10 @@ const ITEM_GROUPS = [
 ]
 function classifyItem(name) {
   const n = name.toLowerCase()
-  if (n.startsWith('combo') || n.includes('combo'))                 return 'combos'
-  if (n.includes('gyoza'))                                           return 'acomp'
-  if (n.includes('cerveja') || n.includes('refrigerante'))          return 'bebidas'
-  if (n.includes('molho')   || n.includes('salsa'))                 return 'molhos'
+  if (n.startsWith('combo') || n.includes('combo') || n.includes(' + ')) return 'combos'
+  if (n.includes('gyoza'))                                                 return 'acomp'
+  if (n.includes('cerveja') || n.includes('refrigerante'))                return 'bebidas'
+  if (n.includes('molho')   || n.includes('salsa'))                       return 'molhos'
   return 'pratos'
 }
 
@@ -530,7 +530,7 @@ const GROUPS = [
   { name: 'Agripicante',    test: n => n.includes('agripicante') },
   { name: 'Kung Pao',       test: n => n.includes('kung pao') },
   { name: 'Gyoza',          test: n => n.includes('gyoza') },
-  { name: 'Combos',         test: n => n.startsWith('combo') },
+  { name: 'Combos',         test: n => n.startsWith('combo') || n.includes(' + ') },
   { name: 'Bebidas & Molhos', test: n => n.includes('cerveja') || n.includes('refrigerante') || n.includes('molho') || n.includes('salsa') },
 ]
 function groupDish(name) {
