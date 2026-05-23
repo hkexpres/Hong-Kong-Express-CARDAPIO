@@ -1516,16 +1516,16 @@ document.getElementById('modalBack').addEventListener('click', () => {
   confirmModal.classList.remove('open')
 })
 
-document.getElementById('modalSend').addEventListener('click', async () => {
+document.getElementById('modalSend').addEventListener('click', () => {
   const keys = Object.keys(cart)
   if (!keys.length) return
   modalActions.style.display = 'none'
   modalSpinner.classList.add('show')
 
-  const items  = keys.map(k => ({ name: cart[k].name, price: cart[k].price, qty: cart[k].qty }))
-  const total  = items.reduce((a, it) => a + it.price * it.qty, 0)
+  const items = keys.map(k => ({ name: cart[k].name, price: cart[k].price, qty: cart[k].qty }))
+  const total = items.reduce((a, it) => a + it.price * it.qty, 0)
 
-  // read or create customer record
+  // read or create customer record (synchronous)
   let customer = loadCustomer()
   if (!customer) {
     const phone = document.getElementById('crmPhone').value.trim()
@@ -1536,23 +1536,22 @@ document.getElementById('modalSend').addEventListener('click', async () => {
     }
   }
 
-  try {
-    const orderData = {
-      items,
-      total,
-      status: 'pending',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    }
-    if (customer) orderData.customer = { phone: customer.phone || '', name: customer.name || '' }
-    await db.collection('orders').add(orderData)
-  } catch (err) {
-    console.error('Firestore error:', err)
-  }
-
+  // Build WhatsApp URL synchronously and open BEFORE any async operation.
+  // iOS Safari blocks window.open() called after an await (outside user gesture context).
   let msg = '*Olá! Gostaria de fazer um pedido:*\n\n'
   items.forEach(it => { msg += `• ${it.qty}x ${it.name} — ${fmtBRL(it.qty * it.price)}\n` })
   msg += `\n*Total: ${fmtBRL(total)}*`
   window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank')
+
+  // Save to Firestore in background (fire-and-forget, no await needed)
+  const orderData = {
+    items,
+    total,
+    status: 'pending',
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  }
+  if (customer) orderData.customer = { phone: customer.phone || '', name: customer.name || '' }
+  db.collection('orders').add(orderData).catch(err => console.error('Firestore error:', err))
 
   confirmModal.classList.remove('open')
   modalActions.style.display = ''
