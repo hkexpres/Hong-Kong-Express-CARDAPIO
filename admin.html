@@ -521,6 +521,46 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
 }
 .item-from-order{color:var(--gray2);font-size:10px;margin-left:4px}
 
+/* ── ARTIGOS (MAESTRO) ── */
+.art-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.art-toolbar input[type="text"]{
+  flex:1;min-width:200px;background:var(--bg3);border:1px solid #333;border-radius:8px;
+  color:var(--white);font-size:13px;padding:9px 12px;outline:none;transition:border .15s;
+}
+.art-toolbar input:focus{border-color:var(--yellow)}
+.art-btn{
+  padding:9px 18px;border-radius:8px;border:none;font-family:'Inter',sans-serif;
+  font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;transition:opacity .15s;
+}
+.art-btn:hover{opacity:.85}
+.art-btn-primary{background:var(--yellow);color:#000}
+.art-btn-ghost{background:rgba(255,255,255,0.07);color:var(--white)}
+.art-btn-danger{background:rgba(244,67,54,0.15);color:#F44336}
+.art-table{width:100%;border-collapse:collapse;font-size:13px}
+.art-table th{
+  padding:9px 12px;text-align:left;color:var(--gray);font-weight:600;font-size:11px;
+  border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;
+}
+.art-table td{
+  padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.04);
+  color:var(--white);vertical-align:middle;
+}
+.art-table tr:hover td{background:rgba(255,255,255,0.02)}
+.art-inp{
+  background:var(--bg3);border:1px solid #333;border-radius:6px;
+  color:var(--white);font-size:13px;padding:5px 8px;outline:none;transition:border .15s;width:100%;
+}
+.art-inp:focus{border-color:var(--yellow)}
+.art-inp-price{width:80px;text-align:right}
+.art-inp-cost{width:75px;text-align:right}
+.art-inactive td{opacity:.4}
+.art-status-toggle{
+  background:none;border:1px solid #444;border-radius:5px;color:var(--gray);
+  font-size:11px;padding:3px 8px;cursor:pointer;white-space:nowrap;transition:all .15s;
+}
+.art-status-toggle.active{border-color:var(--green2);color:var(--green2)}
+.art-import-info{font-size:12px;color:var(--gray2);margin-left:8px}
+
 /* ── CARGA MANUAL ── */
 .manual-grid{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}
 .manual-row{display:flex;gap:14px;flex-wrap:wrap}
@@ -583,6 +623,7 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
       <button class="tab-btn" data-tab="hoje">Hoje <span class="badge hidden" id="pendenteBadge">0</span></button>
       <button class="tab-btn" data-tab="detalhe">Detalhe</button>
       <button class="tab-btn" data-tab="crm">CRM</button>
+      <button class="tab-btn" data-tab="artigos">Artigos</button>
       <button class="tab-btn" data-tab="manual">Carga Manual</button>
       <button class="tab-btn" data-tab="financas">Finanças</button>
     </nav>
@@ -721,6 +762,52 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
     </div>
 
     <div id="financasContent"></div>
+  </div>
+
+  <!-- ARTIGOS -->
+  <div class="tab-content" id="tab-artigos" style="display:none">
+    <div class="fin-config-card">
+      <div class="fin-config-title">Maestro de Artigos</div>
+      <div class="fin-config-sub">Fonte única de produtos — alimenta Finanças, Carga Manual e Detalhe. Aqui você cria, edita e desativa artigos. Itens inativos não aparecem na Carga Manual mas mantêm o histórico de vendas.</div>
+
+      <div class="art-toolbar">
+        <input type="text" id="artNewName" placeholder="Nome do novo artigo…">
+        <select id="artNewCat" class="art-inp" style="width:140px">
+          <option value="pratos">Pratos</option>
+          <option value="combos">Combos</option>
+          <option value="acomp">Acomp.</option>
+          <option value="bebidas">Bebidas</option>
+          <option value="molhos">Molhos</option>
+        </select>
+        <input type="number" id="artNewPrice" class="art-inp art-inp-price" min="0" step="0.01" placeholder="Preço R$">
+        <input type="number" id="artNewCost" class="art-inp art-inp-cost" min="0" step="0.01" placeholder="Custo R$">
+        <button class="art-btn art-btn-primary" id="artAddBtn">+ Criar</button>
+      </div>
+
+      <div class="art-toolbar" style="margin-bottom:14px">
+        <button class="art-btn art-btn-ghost" id="artImportBtn">⬇ Importar do histórico</button>
+        <button class="art-btn art-btn-ghost" id="artMigrateBtn">🔄 Migrar custos do navegador</button>
+        <span class="art-import-info" id="artImportInfo"></span>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table class="art-table">
+          <thead><tr>
+            <th>Nome</th>
+            <th>Categoria</th>
+            <th style="text-align:right">Preço R$</th>
+            <th style="text-align:right">Custo R$</th>
+            <th style="text-align:center">Status</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="artTableBody"><tr><td colspan="6" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
+        <button class="art-btn art-btn-primary" id="artSaveBtn">Salvar alterações</button>
+        <span class="fin-saved-msg" id="artSavedMsg">✓ Salvo</span>
+      </div>
+    </div>
   </div>
 
   <!-- CARGA MANUAL -->
@@ -958,6 +1045,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none')
     document.getElementById('tab-' + tab).style.display = 'block'
     if (tab === 'crm') loadCRM()
+    if (tab === 'artigos') initArtigos()
     if (tab === 'financas') initFinancas()
     if (tab === 'manual') initManual()
   })
@@ -1824,9 +1912,6 @@ function deleteManualItem(name) {
 document.getElementById('addItemBtn').addEventListener('click', addManualItem)
 document.getElementById('newItemName').addEventListener('keydown', e => { if (e.key === 'Enter') addManualItem() })
 
-function loadItemCosts() {
-  try { return JSON.parse(localStorage.getItem(ITEM_COST_KEY)) || {} } catch { return {} }
-}
 function saveItemCosts() {
   const costs = {}
   document.querySelectorAll('.cost-input[data-item]').forEach(inp => {
@@ -1847,40 +1932,10 @@ function saveItemCosts() {
   checkNoCostWarn(costs)
 }
 
-function getItemCat(itemName) {
-  try {
-    const saved = JSON.parse(localStorage.getItem('hke_item_cats_v1')) || {}
-    return saved[itemName] || classifyItem(itemName)
-  } catch { return classifyItem(itemName) }
-}
 function checkNoCostWarn(costs) {
   if (!cachedUniqueItems) return
   const missing = cachedUniqueItems.some(it => !(it.name in costs) || costs[it.name] === 0)
   document.getElementById('noCostWarn').classList.toggle('visible', missing)
-}
-
-async function fetchUniqueItems() {
-  if (cachedUniqueItems) return cachedUniqueItems
-  const snap = await db.collection('orders').get()
-  const map = {}
-  snap.docs.forEach(d => {
-    ;(d.data().items || []).forEach(it => {
-      if (!map[it.name]) map[it.name] = { name: it.name, cat: classifyItem(it.name), price: it.price, manual: false }
-    })
-  })
-  // merge manual master items (don't overwrite Firestore items)
-  loadManualItems().forEach(it => {
-    if (!map[it.name]) map[it.name] = { ...it }
-  })
-  // apply saved category overrides
-  const savedCats = (() => { try { return JSON.parse(localStorage.getItem(ITEM_CATS_KEY)) || {} } catch { return {} } })()
-  Object.values(map).forEach(it => { if (savedCats[it.name]) it.cat = savedCats[it.name] })
-  const catOrder = ['pratos','combos','acomp','bebidas','molhos']
-  cachedUniqueItems = Object.values(map).sort((a, b) => {
-    const ci = catOrder.indexOf(a.cat) - catOrder.indexOf(b.cat)
-    return ci !== 0 ? ci : a.name.localeCompare(b.name)
-  })
-  return cachedUniqueItems
 }
 
 const CAT_OPTIONS = Object.entries(CAT_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')
@@ -2162,6 +2217,259 @@ function renderFinancas(orders) {
     }
   })
 }
+
+// ════════════════ MAESTRO DE ARTIGOS (Firestore) ════════════════
+// In-memory edits buffer: { [docId]: { name, category, price, cost, active } }
+// New (unsaved) rows have id starting with '__new__'
+let artigosBuffer = {}    // changes pending save
+let artigosSnapshot = {}  // last loaded state from Firestore
+
+async function loadArtigos() {
+  const snap = await db.collection('products').orderBy('category').orderBy('name').get()
+  artigosSnapshot = {}
+  snap.docs.forEach(d => { artigosSnapshot[d.id] = { id: d.id, ...d.data() } })
+  artigosBuffer = {}
+  return Object.values(artigosSnapshot)
+}
+
+function mergeArtigos() {
+  const map = { ...artigosSnapshot }
+  Object.entries(artigosBuffer).forEach(([id, data]) => {
+    map[id] = { id, ...data }
+  })
+  const catOrder = ['pratos','combos','acomp','bebidas','molhos']
+  return Object.values(map).sort((a, b) => {
+    const ci = catOrder.indexOf(a.category) - catOrder.indexOf(b.category)
+    return ci !== 0 ? ci : (a.name || '').localeCompare(b.name || '')
+  })
+}
+
+function renderArtTable() {
+  const items = mergeArtigos()
+  const body = document.getElementById('artTableBody')
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="6" style="color:#555;padding:24px;text-align:center">Nenhum artigo cadastrado. Importe do histórico ou crie um novo.</td></tr>'
+    return
+  }
+  body.innerHTML = items.map(it => {
+    const cat = it.category || 'pratos'
+    const catSel = Object.entries(CAT_LABELS).map(([k,v]) =>
+      `<option value="${k}" ${cat===k?'selected':''}>${v}</option>`).join('')
+    const activeClass = it.active === false ? 'art-inactive' : ''
+    const toggleLabel = it.active === false ? 'Inativo' : 'Ativo'
+    const toggleClass = it.active === false ? '' : 'active'
+    const safeId = it.id.replace(/'/g, "\\'")
+    return `<tr class="${activeClass}" data-id="${it.id}">
+      <td><input class="art-inp" data-field="name" data-id="${it.id}" value="${(it.name||'').replace(/"/g,'&quot;')}"></td>
+      <td><select class="art-inp" data-field="category" data-id="${it.id}">${catSel}</select></td>
+      <td style="text-align:right"><input class="art-inp art-inp-price" type="number" min="0" step="0.01" data-field="price" data-id="${it.id}" value="${it.price||''}"></td>
+      <td style="text-align:right"><input class="art-inp art-inp-cost" type="number" min="0" step="0.01" data-field="cost" data-id="${it.id}" value="${it.cost||''}"></td>
+      <td style="text-align:center">
+        <button class="art-status-toggle ${toggleClass}" onclick="toggleArtigoActive('${safeId}')">${toggleLabel}</button>
+      </td>
+      <td>
+        <button class="art-btn art-btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteArtigo('${safeId}')">✕</button>
+      </td>
+    </tr>`
+  }).join('')
+
+  body.querySelectorAll('.art-inp[data-field]').forEach(el => {
+    el.addEventListener('change', e => {
+      const id = e.target.dataset.id
+      const field = e.target.dataset.field
+      const current = artigosBuffer[id] || { ...(artigosSnapshot[id] || {}) }
+      let val = e.target.value
+      if (field === 'price' || field === 'cost') val = parseFloat(val) || null
+      artigosBuffer[id] = { ...current, [field]: val }
+    })
+  })
+}
+
+function toggleArtigoActive(id) {
+  const current = artigosBuffer[id] || { ...(artigosSnapshot[id] || {}) }
+  const nowActive = current.active === false ? true : false
+  artigosBuffer[id] = { ...current, active: nowActive }
+  renderArtTable()
+  // invalidate so Carga Manual / Finanças reload
+  cachedUniqueItems = null
+}
+
+async function deleteArtigo(id) {
+  if (!confirm('Eliminar este artigo? O histórico de vendas fica preservado.')) return
+  try {
+    if (!id.startsWith('__new__')) await db.collection('products').doc(id).delete()
+    delete artigosSnapshot[id]
+    delete artigosBuffer[id]
+    cachedUniqueItems = null
+    renderArtTable()
+  } catch (e) { alert('Erro ao eliminar: ' + e.message) }
+}
+
+async function saveArtigos() {
+  const btn = document.getElementById('artSaveBtn')
+  btn.disabled = true; btn.textContent = 'Salvando…'
+  try {
+    const batch = db.batch()
+    for (const [id, data] of Object.entries(artigosBuffer)) {
+      const { id: _id, ...fields } = data
+      if (id.startsWith('__new__')) {
+        const ref = db.collection('products').doc()
+        batch.set(ref, { ...fields, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+      } else {
+        batch.update(db.collection('products').doc(id), fields)
+      }
+    }
+    await batch.commit()
+    const msg = document.getElementById('artSavedMsg')
+    msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500)
+    cachedUniqueItems = null
+    await initArtigos()
+  } catch (e) { alert('Erro ao salvar: ' + e.message) }
+  finally { btn.disabled = false; btn.textContent = 'Salvar alterações' }
+}
+
+function addArtigoRow() {
+  const name = document.getElementById('artNewName').value.trim()
+  if (!name) { document.getElementById('artNewName').focus(); return }
+  const cat   = document.getElementById('artNewCat').value
+  const price = parseFloat(document.getElementById('artNewPrice').value) || null
+  const cost  = parseFloat(document.getElementById('artNewCost').value)  || null
+  const tmpId = '__new__' + Date.now()
+  artigosBuffer[tmpId] = { name, category: cat, price, cost, active: true }
+  document.getElementById('artNewName').value  = ''
+  document.getElementById('artNewPrice').value = ''
+  document.getElementById('artNewCost').value  = ''
+  renderArtTable()
+}
+
+async function importFromHistory() {
+  const info = document.getElementById('artImportInfo')
+  info.textContent = 'Importando…'
+  const snap = await db.collection('orders').get()
+  const namesSeen = new Set(Object.values(artigosSnapshot).map(p => p.name))
+  const toAdd = {}
+  snap.docs.forEach(d => {
+    ;(d.data().items || []).forEach(it => {
+      if (!namesSeen.has(it.name) && !toAdd[it.name]) {
+        toAdd[it.name] = {
+          name: it.name,
+          category: classifyItem(it.name),
+          price: it.price || null,
+          cost: null,
+          active: true
+        }
+      }
+    })
+  })
+  const news = Object.values(toAdd)
+  if (!news.length) { info.textContent = 'Todos os itens do histórico já estão cadastrados.'; return }
+  const batch = db.batch()
+  news.forEach(p => {
+    const ref = db.collection('products').doc()
+    batch.set(ref, { ...p, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+  })
+  await batch.commit()
+  cachedUniqueItems = null
+  info.textContent = `✓ ${news.length} artigo(s) importado(s).`
+  await initArtigos()
+}
+
+async function migrateLocalStorageCosts() {
+  const costs = loadItemCosts()
+  const cats  = (() => { try { return JSON.parse(localStorage.getItem(ITEM_CATS_KEY)) || {} } catch { return {} } })()
+  const allByName = {}
+  Object.values(artigosSnapshot).forEach(p => { allByName[p.name] = p })
+
+  const toUpdate = []
+  for (const [name, cost] of Object.entries(costs)) {
+    if (allByName[name]) toUpdate.push({ id: allByName[name].id, cost, cat: cats[name] || null })
+  }
+  if (!toUpdate.length) {
+    document.getElementById('artImportInfo').textContent = 'Nenhum custo encontrado no navegador para migrar.'
+    return
+  }
+  const batch = db.batch()
+  toUpdate.forEach(({ id, cost, cat }) => {
+    const upd = { cost }
+    if (cat) upd.category = cat
+    batch.update(db.collection('products').doc(id), upd)
+  })
+  await batch.commit()
+  document.getElementById('artImportInfo').textContent = `✓ ${toUpdate.length} custo(s) migrado(s) do navegador.`
+  cachedUniqueItems = null
+  await initArtigos()
+}
+
+async function initArtigos() {
+  await loadArtigos()
+  renderArtTable()
+}
+
+// Override fetchUniqueItems to prefer Firestore products collection
+async function fetchUniqueItems() {
+  if (cachedUniqueItems) return cachedUniqueItems
+
+  // First try products collection (authoritative master)
+  const prodSnap = await db.collection('products').get()
+  const map = {}
+  if (!prodSnap.empty) {
+    prodSnap.docs.forEach(d => {
+      const p = d.data()
+      if (p.active !== false) {
+        map[p.name] = { name: p.name, cat: p.category || classifyItem(p.name), price: p.price || null, cost: p.cost || null }
+      }
+    })
+  }
+
+  // Supplement with any names from order history not yet in products
+  const orderSnap = await db.collection('orders').get()
+  orderSnap.docs.forEach(d => {
+    ;(d.data().items || []).forEach(it => {
+      if (!map[it.name]) map[it.name] = { name: it.name, cat: classifyItem(it.name), price: it.price, cost: null }
+    })
+  })
+
+  // Supplement with manual localStorage items
+  loadManualItems().forEach(it => {
+    if (!map[it.name]) map[it.name] = { ...it }
+  })
+
+  const catOrder = ['pratos','combos','acomp','bebidas','molhos']
+  cachedUniqueItems = Object.values(map).sort((a, b) => {
+    const ci = catOrder.indexOf(a.cat) - catOrder.indexOf(b.cat)
+    return ci !== 0 ? ci : a.name.localeCompare(b.name)
+  })
+  return cachedUniqueItems
+}
+
+// loadItemCosts now reads from in-memory products snapshot (populated by fetchUniqueItems)
+function loadItemCosts() {
+  const costs = {}
+  // Read from Firestore snapshot if available
+  Object.values(artigosSnapshot).forEach(p => { if (p.cost) costs[p.name] = p.cost })
+  // Fallback: localStorage
+  try {
+    const saved = JSON.parse(localStorage.getItem(ITEM_COST_KEY)) || {}
+    Object.entries(saved).forEach(([k, v]) => { if (!(k in costs)) costs[k] = v })
+  } catch {}
+  return costs
+}
+
+// getItemCat reads from Firestore snapshot first
+function getItemCat(itemName) {
+  const found = Object.values(artigosSnapshot).find(p => p.name === itemName)
+  if (found && found.category) return found.category
+  try {
+    const saved = JSON.parse(localStorage.getItem(ITEM_CATS_KEY)) || {}
+    return saved[itemName] || classifyItem(itemName)
+  } catch { return classifyItem(itemName) }
+}
+
+document.getElementById('artAddBtn').addEventListener('click', addArtigoRow)
+document.getElementById('artNewName').addEventListener('keydown', e => { if (e.key === 'Enter') addArtigoRow() })
+document.getElementById('artSaveBtn').addEventListener('click', saveArtigos)
+document.getElementById('artImportBtn').addEventListener('click', importFromHistory)
+document.getElementById('artMigrateBtn').addEventListener('click', migrateLocalStorageCosts)
 
 // ════════════════ CARGA MANUAL DE PEDIDOS ════════════════
 let manualLines = []
