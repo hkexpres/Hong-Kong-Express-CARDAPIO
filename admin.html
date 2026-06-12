@@ -520,6 +520,44 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   vertical-align:middle;margin-left:4px;
 }
 .item-from-order{color:var(--gray2);font-size:10px;margin-left:4px}
+
+/* ── CARGA MANUAL ── */
+.manual-grid{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}
+.manual-row{display:flex;gap:14px;flex-wrap:wrap}
+.manual-row label{flex:1;min-width:150px;font-size:12px;color:var(--gray);display:flex;flex-direction:column;gap:6px}
+.manual-row input,.manual-row select{
+  background:var(--bg3);border:1px solid #333;border-radius:8px;
+  color:var(--white);font-size:13px;padding:9px 11px;outline:none;transition:border .15s;
+}
+.manual-row input:focus,.manual-row select:focus{border-color:var(--yellow)}
+.manual-summary-card{
+  background:var(--bg2);border:1px solid rgba(144,64,64,0.25);border-radius:14px;
+  padding:20px 22px;position:sticky;top:20px;
+}
+.manual-line{
+  display:flex;align-items:center;gap:10px;padding:9px 0;
+  border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px;
+}
+.manual-line:last-of-type{border-bottom:none}
+.manual-line-qty{color:var(--yellow);font-weight:700;white-space:nowrap}
+.manual-line-name{flex:1;color:var(--white)}
+.manual-line-price{color:var(--gray);white-space:nowrap}
+.manual-line-del{background:none;border:none;color:#555;font-size:15px;cursor:pointer;padding:2px 5px;line-height:1}
+.manual-line-del:hover{color:#F44336}
+.manual-empty{color:var(--gray2);font-size:13px;font-style:italic;padding:18px 0;text-align:center}
+.manual-total-row{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.1);
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:16px;color:var(--white);
+}
+.manual-save-btn{
+  width:100%;margin-top:16px;padding:12px;border-radius:9px;border:none;
+  background:var(--yellow);color:#000;font-family:'Montserrat',sans-serif;
+  font-weight:700;font-size:14px;cursor:pointer;transition:opacity .15s;
+}
+.manual-save-btn:hover{opacity:.88}
+.manual-save-btn:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:760px){.manual-grid{grid-template-columns:1fr}.manual-summary-card{position:static}}
 </style>
 </head>
 <body>
@@ -545,6 +583,7 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
       <button class="tab-btn" data-tab="hoje">Hoje <span class="badge hidden" id="pendenteBadge">0</span></button>
       <button class="tab-btn" data-tab="detalhe">Detalhe</button>
       <button class="tab-btn" data-tab="crm">CRM</button>
+      <button class="tab-btn" data-tab="manual">Carga Manual</button>
       <button class="tab-btn" data-tab="financas">Finanças</button>
     </nav>
     <button id="logoutBtn">Sair</button>
@@ -682,6 +721,76 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
     </div>
 
     <div id="financasContent"></div>
+  </div>
+
+  <!-- CARGA MANUAL -->
+  <div class="tab-content" id="tab-manual" style="display:none">
+    <div class="manual-grid">
+      <!-- Builder column -->
+      <div>
+        <!-- Header: date + channel -->
+        <div class="fin-config-card">
+          <div class="fin-config-title">Novo Pedido Manual</div>
+          <div class="fin-config-sub">Registre pedidos do iFood, telefone ou presenciais que não passam pelo cardápio digital. Entram já confirmados e contam no Dashboard e Finanças.</div>
+          <div class="manual-row">
+            <label>Data e hora
+              <input type="datetime-local" id="manualDate">
+            </label>
+            <label>Canal
+              <select id="manualSource">
+                <option value="ifood">iFood</option>
+                <option value="telefone">Telefone</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="presencial">Presencial</option>
+                <option value="manual">Outro</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <!-- Customer -->
+        <div class="fin-config-card">
+          <div class="fin-config-title">Cliente</div>
+          <div class="fin-config-sub">Selecione um cliente existente ou cadastre um novo — fica registrado no CRM.</div>
+          <div class="manual-row">
+            <label>Nome
+              <input type="text" id="manualCustName" list="manualCustList" placeholder="Nome do cliente" autocomplete="off">
+              <datalist id="manualCustList"></datalist>
+            </label>
+            <label>Telefone
+              <input type="text" id="manualCustPhone" placeholder="(00) 00000-0000" autocomplete="off">
+            </label>
+          </div>
+        </div>
+
+        <!-- Items -->
+        <div class="fin-config-card">
+          <div class="fin-config-title">Itens do Pedido</div>
+          <div class="fin-config-sub">Escolha do catálogo (categoria → produto) ou adicione um item avulso fora do catálogo.</div>
+          <div class="add-item-form">
+            <select id="manualCat" style="min-width:130px"></select>
+            <select id="manualProd" style="flex:1;min-width:180px"></select>
+            <input type="number" id="manualQty" min="1" step="1" value="1" title="Quantidade">
+            <button class="btn-add-item" id="manualAddBtn">+ Adicionar</button>
+          </div>
+          <div class="add-item-form">
+            <input type="text" id="manualCustomName" placeholder="Item avulso (fora do catálogo)">
+            <input type="number" id="manualCustomPrice" min="0" step="0.01" placeholder="Preço R$">
+            <input type="number" id="manualCustomQty" min="1" step="1" value="1" title="Quantidade">
+            <button class="btn-add-item" id="manualAddCustomBtn">+ Avulso</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary column -->
+      <div class="manual-summary-card">
+        <div class="fin-config-title">Resumo do Pedido</div>
+        <div id="manualLines"></div>
+        <div class="manual-total-row"><span>Total</span><span id="manualTotal">R$ 0,00</span></div>
+        <button class="manual-save-btn" id="manualSaveBtn" disabled>Salvar pedido</button>
+        <span class="fin-saved-msg" id="manualSavedMsg">✓ Pedido salvo</span>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -850,6 +959,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-' + tab).style.display = 'block'
     if (tab === 'crm') loadCRM()
     if (tab === 'financas') initFinancas()
+    if (tab === 'manual') initManual()
   })
 })
 
@@ -2052,6 +2162,165 @@ function renderFinancas(orders) {
     }
   })
 }
+
+// ════════════════ CARGA MANUAL DE PEDIDOS ════════════════
+let manualLines = []
+let cachedCustomers = null
+let manualProdIndex = {}
+
+function pad2(n) { return String(n).padStart(2, '0') }
+function localDatetimeValue(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+// Build a customer list derived from existing orders (feeds the CRM)
+async function fetchCustomers() {
+  if (cachedCustomers) return cachedCustomers
+  const snap = await db.collection('orders').get()
+  const map = {}
+  snap.docs.forEach(d => {
+    const c = d.data().customer
+    if (c && (c.phone || c.name)) {
+      const key = c.phone || ('_n_' + (c.name || '').toLowerCase())
+      if (!map[key]) map[key] = { phone: c.phone || '', name: c.name || '' }
+      else if (!map[key].name && c.name) map[key].name = c.name
+    }
+  })
+  cachedCustomers = Object.values(map).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  return cachedCustomers
+}
+
+async function initManual() {
+  document.getElementById('manualDate').value = localDatetimeValue(new Date())
+
+  const catSel = document.getElementById('manualCat')
+  catSel.innerHTML = Object.entries(CAT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')
+
+  const [items, customers] = await Promise.all([fetchUniqueItems(), fetchCustomers()])
+  manualProdIndex = {}
+  items.forEach(it => { manualProdIndex[it.name] = it })
+  populateManualProducts(catSel.value)
+
+  document.getElementById('manualCustList').innerHTML = customers
+    .map(c => `<option value="${(c.name || c.phone).replace(/"/g, '&quot;')}">${c.phone || ''}</option>`).join('')
+
+  manualLines = []
+  renderManualLines()
+}
+
+function populateManualProducts(cat) {
+  const prodSel = document.getElementById('manualProd')
+  const items = (cachedUniqueItems || []).filter(it => it.cat === cat)
+  if (!items.length) { prodSel.innerHTML = '<option value="">— sem itens —</option>'; return }
+  prodSel.innerHTML = items.map(it =>
+    `<option value="${it.name.replace(/"/g, '&quot;')}">${it.name}${it.price ? (' — ' + fmtBRL(it.price)) : ''}</option>`
+  ).join('')
+}
+
+function addOrMergeLine(name, price, qty) {
+  const existing = manualLines.find(l => l.name === name && l.price === price)
+  if (existing) existing.qty += qty
+  else manualLines.push({ name, price, qty })
+  renderManualLines()
+}
+
+function manualAddLine() {
+  const name = document.getElementById('manualProd').value
+  if (!name) return
+  const qty = Math.max(1, parseInt(document.getElementById('manualQty').value) || 1)
+  const it = manualProdIndex[name]
+  addOrMergeLine(name, it && it.price ? it.price : 0, qty)
+  document.getElementById('manualQty').value = '1'
+}
+
+function manualAddCustomLine() {
+  const nameEl = document.getElementById('manualCustomName')
+  const name = nameEl.value.trim()
+  if (!name) { nameEl.focus(); return }
+  const price = parseFloat(document.getElementById('manualCustomPrice').value) || 0
+  const qty = Math.max(1, parseInt(document.getElementById('manualCustomQty').value) || 1)
+  addOrMergeLine(name, price, qty)
+  nameEl.value = ''
+  document.getElementById('manualCustomPrice').value = ''
+  document.getElementById('manualCustomQty').value = '1'
+}
+
+function removeManualLine(idx) {
+  manualLines.splice(idx, 1)
+  renderManualLines()
+}
+
+function renderManualLines() {
+  const wrap = document.getElementById('manualLines')
+  const total = manualLines.reduce((a, l) => a + l.price * l.qty, 0)
+  if (!manualLines.length) {
+    wrap.innerHTML = '<div class="manual-empty">Nenhum item adicionado ainda.</div>'
+  } else {
+    wrap.innerHTML = manualLines.map((l, i) => `
+      <div class="manual-line">
+        <span class="manual-line-qty">${l.qty}×</span>
+        <span class="manual-line-name">${l.name}</span>
+        <span class="manual-line-price">${fmtBRL(l.price * l.qty)}</span>
+        <button class="manual-line-del" onclick="removeManualLine(${i})" title="Remover">✕</button>
+      </div>`).join('')
+  }
+  document.getElementById('manualTotal').textContent = fmtBRL(total)
+  document.getElementById('manualSaveBtn').disabled = manualLines.length === 0
+}
+
+async function saveManualOrder() {
+  if (!manualLines.length) return
+  const dateVal = document.getElementById('manualDate').value
+  if (!dateVal) { alert('Informe a data do pedido.'); return }
+
+  const btn = document.getElementById('manualSaveBtn')
+  btn.disabled = true; btn.textContent = 'Salvando…'
+
+  const items = manualLines.map(l => ({ name: l.name, price: l.price, qty: l.qty }))
+  const total = items.reduce((a, it) => a + it.price * it.qty, 0)
+  const name  = document.getElementById('manualCustName').value.trim()
+  const phone = document.getElementById('manualCustPhone').value.trim()
+
+  const orderData = {
+    items, total,
+    status: 'confirmed',
+    source: document.getElementById('manualSource').value,
+    createdAt: firebase.firestore.Timestamp.fromDate(new Date(dateVal))
+  }
+  if (name || phone) orderData.customer = { name, phone }
+
+  try {
+    await db.collection('orders').add(orderData)
+    // invalidate caches so other tabs and pickers pick up the new data
+    cachedCustomers = null
+    cachedUniqueItems = null
+    const msg = document.getElementById('manualSavedMsg')
+    msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500)
+    // reset form
+    manualLines = []
+    renderManualLines()
+    document.getElementById('manualCustName').value = ''
+    document.getElementById('manualCustPhone').value = ''
+    document.getElementById('manualDate').value = localDatetimeValue(new Date())
+  } catch (err) {
+    console.error('Erro ao salvar pedido manual:', err)
+    alert('Erro ao salvar o pedido. Tente novamente.')
+  } finally {
+    btn.textContent = 'Salvar pedido'
+    btn.disabled = manualLines.length === 0
+  }
+}
+
+document.getElementById('manualCat').addEventListener('change', e => populateManualProducts(e.target.value))
+document.getElementById('manualAddBtn').addEventListener('click', manualAddLine)
+document.getElementById('manualAddCustomBtn').addEventListener('click', manualAddCustomLine)
+document.getElementById('manualSaveBtn').addEventListener('click', saveManualOrder)
+document.getElementById('manualCustName').addEventListener('change', () => {
+  const val = document.getElementById('manualCustName').value.trim().toLowerCase()
+  if (!cachedCustomers || !val) return
+  const match = cachedCustomers.find(c => (c.name || '').toLowerCase() === val)
+  if (match && match.phone) document.getElementById('manualCustPhone').value = match.phone
+})
 </script>
 </body>
 </html>
