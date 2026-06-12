@@ -2225,7 +2225,7 @@ let artigosBuffer = {}    // changes pending save
 let artigosSnapshot = {}  // last loaded state from Firestore
 
 async function loadArtigos() {
-  const snap = await db.collection('products').orderBy('category').orderBy('name').get()
+  const snap = await db.collection('products').get()
   artigosSnapshot = {}
   snap.docs.forEach(d => { artigosSnapshot[d.id] = { id: d.id, ...d.data() } })
   artigosBuffer = {}
@@ -2345,64 +2345,91 @@ function addArtigoRow() {
 async function importFromHistory() {
   const info = document.getElementById('artImportInfo')
   info.textContent = 'Importando…'
-  const snap = await db.collection('orders').get()
-  const namesSeen = new Set(Object.values(artigosSnapshot).map(p => p.name))
-  const toAdd = {}
-  snap.docs.forEach(d => {
-    ;(d.data().items || []).forEach(it => {
-      if (!namesSeen.has(it.name) && !toAdd[it.name]) {
-        toAdd[it.name] = {
-          name: it.name,
-          category: classifyItem(it.name),
-          price: it.price || null,
-          cost: null,
-          active: true
+  try {
+    // ensure snapshot is loaded first
+    if (!Object.keys(artigosSnapshot).length) await loadArtigos()
+
+    const snap = await db.collection('orders').get()
+    const namesSeen = new Set(Object.values(artigosSnapshot).map(p => p.name))
+    const toAdd = {}
+    snap.docs.forEach(d => {
+      ;(d.data().items || []).forEach(it => {
+        if (!namesSeen.has(it.name) && !toAdd[it.name]) {
+          toAdd[it.name] = {
+            name: it.name,
+            category: classifyItem(it.name),
+            price: it.price || null,
+            cost: null,
+            active: true
+          }
         }
-      }
+      })
     })
-  })
-  const news = Object.values(toAdd)
-  if (!news.length) { info.textContent = 'Todos os itens do histórico já estão cadastrados.'; return }
-  const batch = db.batch()
-  news.forEach(p => {
-    const ref = db.collection('products').doc()
-    batch.set(ref, { ...p, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
-  })
-  await batch.commit()
-  cachedUniqueItems = null
-  info.textContent = `✓ ${news.length} artigo(s) importado(s).`
-  await initArtigos()
+    const news = Object.values(toAdd)
+    if (!news.length) { info.textContent = 'Todos os itens do histórico já estão cadastrados.'; return }
+    const batch = db.batch()
+    news.forEach(p => {
+      const ref = db.collection('products').doc()
+      batch.set(ref, { ...p, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+    })
+    await batch.commit()
+    cachedUniqueItems = null
+    info.textContent = `✓ ${news.length} artigo(s) importado(s).`
+    await initArtigos()
+  } catch (e) {
+    console.error('importFromHistory error:', e)
+    info.textContent = `Erro: ${e.message}`
+  }
 }
 
 async function migrateLocalStorageCosts() {
-  const costs = loadItemCosts()
-  const cats  = (() => { try { return JSON.parse(localStorage.getItem(ITEM_CATS_KEY)) || {} } catch { return {} } })()
-  const allByName = {}
-  Object.values(artigosSnapshot).forEach(p => { allByName[p.name] = p })
+  const info = document.getElementById('artImportInfo')
+  info.textContent = 'Migrando…'
+  try {
+    if (!Object.keys(artigosSnapshot).length) await loadArtigos()
 
-  const toUpdate = []
-  for (const [name, cost] of Object.entries(costs)) {
-    if (allByName[name]) toUpdate.push({ id: allByName[name].id, cost, cat: cats[name] || null })
+    // Read legacy localStorage costs (raw, not from Firestore snapshot)
+    let rawCosts = {}
+    try { rawCosts = JSON.parse(localStorage.getItem(ITEM_COST_KEY)) || {} } catch {}
+    const cats = (() => { try { return JSON.parse(localStorage.getItem(ITEM_CATS_KEY)) || {} } catch { return {} } })()
+
+    const allByName = {}
+    Object.values(artigosSnapshot).forEach(p => { allByName[p.name] = p })
+
+    const toUpdate = []
+    for (const [name, cost] of Object.entries(rawCosts)) {
+      if (allByName[name] && cost > 0) toUpdate.push({ id: allByName[name].id, cost, cat: cats[name] || null })
+    }
+    if (!toUpdate.length) {
+      info.textContent = 'Nenhum custo encontrado no navegador. Importe do histórico primeiro.'
+      return
+    }
+    const batch = db.batch()
+    toUpdate.forEach(({ id, cost, cat }) => {
+      const upd = { cost }
+      if (cat) upd.category = cat
+      batch.update(db.collection('products').doc(id), upd)
+    })
+    await batch.commit()
+    info.textContent = `✓ ${toUpdate.length} custo(s) migrado(s) do navegador.`
+    cachedUniqueItems = null
+    await initArtigos()
+  } catch (e) {
+    console.error('migrateLocalStorageCosts error:', e)
+    info.textContent = `Erro: ${e.message}`
   }
-  if (!toUpdate.length) {
-    document.getElementById('artImportInfo').textContent = 'Nenhum custo encontrado no navegador para migrar.'
-    return
-  }
-  const batch = db.batch()
-  toUpdate.forEach(({ id, cost, cat }) => {
-    const upd = { cost }
-    if (cat) upd.category = cat
-    batch.update(db.collection('products').doc(id), upd)
-  })
-  await batch.commit()
-  document.getElementById('artImportInfo').textContent = `✓ ${toUpdate.length} custo(s) migrado(s) do navegador.`
-  cachedUniqueItems = null
-  await initArtigos()
 }
 
 async function initArtigos() {
-  await loadArtigos()
-  renderArtTable()
+  const body = document.getElementById('artTableBody')
+  body.innerHTML = '<tr><td colspan="6" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr>'
+  try {
+    await loadArtigos()
+    renderArtTable()
+  } catch (e) {
+    console.error('Artigos load error:', e)
+    body.innerHTML = `<tr><td colspan="6" style="color:#F44336;padding:20px;text-align:center">Erro ao carregar: ${e.message}</td></tr>`
+  }
 }
 
 // Override fetchUniqueItems to prefer Firestore products collection
