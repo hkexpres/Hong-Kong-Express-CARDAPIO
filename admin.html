@@ -560,6 +560,11 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
 }
 .art-status-toggle.active{border-color:var(--green2);color:var(--green2)}
 .art-import-info{font-size:12px;color:var(--gray2);margin-left:8px}
+.art-migration-link{
+  background:none;border:none;color:var(--gray2);font-size:12px;cursor:pointer;
+  padding:4px 0;margin-bottom:10px;text-decoration:underline;text-underline-offset:3px;
+}
+.art-migration-link:hover{color:var(--gray)}
 
 /* ── CARGA MANUAL ── */
 .manual-grid{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}
@@ -784,10 +789,13 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
         <button class="art-btn art-btn-primary" id="artAddBtn">+ Criar</button>
       </div>
 
-      <div class="art-toolbar" style="margin-bottom:14px">
-        <button class="art-btn art-btn-ghost" id="artImportBtn">⬇ Importar do histórico</button>
-        <button class="art-btn art-btn-ghost" id="artMigrateBtn">🔄 Migrar custos do navegador</button>
-        <span class="art-import-info" id="artImportInfo"></span>
+      <div id="artMigrationWrap">
+        <button class="art-migration-link" id="artMigrationToggle" style="display:none">⚙ Ferramentas de configuração inicial</button>
+        <div class="art-toolbar" id="artMigrationTools" style="margin-bottom:14px">
+          <button class="art-btn art-btn-ghost" id="artImportBtn">⬇ Importar do histórico</button>
+          <button class="art-btn art-btn-ghost" id="artMigrateBtn">🔄 Migrar custos do navegador</button>
+          <span class="art-import-info" id="artImportInfo"></span>
+        </div>
       </div>
 
       <div style="overflow-x:auto">
@@ -2420,12 +2428,23 @@ async function migrateLocalStorageCosts() {
   }
 }
 
+function updateMigrationToolsVisibility() {
+  // Once the master has articles, tuck the one-time migration tools behind
+  // a discreet toggle so the tab stays clean.
+  const hasItems = Object.keys(artigosSnapshot).length > 0
+  const tools  = document.getElementById('artMigrationTools')
+  const toggle = document.getElementById('artMigrationToggle')
+  if (hasItems) { tools.style.display = 'none'; toggle.style.display = 'inline-block' }
+  else          { tools.style.display = 'flex'; toggle.style.display = 'none' }
+}
+
 async function initArtigos() {
   const body = document.getElementById('artTableBody')
   body.innerHTML = '<tr><td colspan="6" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr>'
   try {
     await loadArtigos()
     renderArtTable()
+    updateMigrationToolsVisibility()
   } catch (e) {
     console.error('Artigos load error:', e)
     body.innerHTML = `<tr><td colspan="6" style="color:#F44336;padding:20px;text-align:center">Erro ao carregar: ${e.message}</td></tr>`
@@ -2497,6 +2516,10 @@ document.getElementById('artNewName').addEventListener('keydown', e => { if (e.k
 document.getElementById('artSaveBtn').addEventListener('click', saveArtigos)
 document.getElementById('artImportBtn').addEventListener('click', importFromHistory)
 document.getElementById('artMigrateBtn').addEventListener('click', migrateLocalStorageCosts)
+document.getElementById('artMigrationToggle').addEventListener('click', () => {
+  const tools = document.getElementById('artMigrationTools')
+  tools.style.display = tools.style.display === 'none' ? 'flex' : 'none'
+})
 
 // ════════════════ CARGA MANUAL DE PEDIDOS ════════════════
 let manualLines = []
