@@ -790,13 +790,14 @@ input[type="number"]{-moz-appearance:textfield}
         <table class="art-table">
           <thead><tr>
             <th>Nome</th>
+            <th>SKU</th>
             <th>Categoria</th>
             <th style="text-align:right">Preço R$</th>
             <th style="text-align:right">Custo R$</th>
             <th style="text-align:center">Status</th>
             <th></th>
           </tr></thead>
-          <tbody id="artTableBody"><tr><td colspan="6" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr></tbody>
+          <tbody id="artTableBody"><tr><td colspan="7" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr></tbody>
         </table>
       </div>
       <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
@@ -2020,11 +2021,11 @@ async function loadFinancas() {
   }
 }
 
-function calcOrderFinance(order, itemCosts) {
+function calcOrderFinance(order, itemCosts, skuCosts) {
   let receita = 0, custo = 0
   ;(order.items || []).forEach(it => {
     receita += it.qty * it.price
-    custo   += it.qty * (itemCosts[it.name] || 0)
+    custo   += it.qty * (skuCosts[it.sku] ?? itemCosts[it.name] ?? 0)
   })
   return { receita, custo, lucro: receita - custo, margem: receita > 0 ? (receita - custo) / receita * 100 : 0 }
 }
@@ -2032,13 +2033,14 @@ function calcOrderFinance(order, itemCosts) {
 function renderFinancas(orders) {
   const el = document.getElementById('financasContent')
   const itemCosts = loadItemCosts()
+  const skuCosts = loadSkuCosts()
 
   if (!orders.length) {
     el.innerHTML = '<div class="empty-state">Nenhum pedido confirmado no período.</div>'
     return
   }
 
-  const rows = orders.map(o => ({ ...o, fin: calcOrderFinance(o, itemCosts) }))
+  const rows = orders.map(o => ({ ...o, fin: calcOrderFinance(o, itemCosts, skuCosts) }))
 
   const totReceita = rows.reduce((a, r) => a + r.fin.receita, 0)
   const totCusto   = rows.reduce((a, r) => a + r.fin.custo, 0)
@@ -2054,7 +2056,7 @@ function renderFinancas(orders) {
       if (!catData[cat]) return
       catData[cat].qty     += it.qty
       catData[cat].receita += it.qty * it.price
-      catData[cat].custo   += it.qty * (itemCosts[it.name] || 0)
+      catData[cat].custo   += it.qty * (skuCosts[it.sku] ?? itemCosts[it.name] ?? 0)
     })
   })
 
@@ -2244,7 +2246,7 @@ function renderArtTable() {
   const items = mergeArtigos()
   const body = document.getElementById('artTableBody')
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="6" style="color:#555;padding:24px;text-align:center">Nenhum artigo cadastrado. Importe do histórico ou crie um novo.</td></tr>'
+    body.innerHTML = '<tr><td colspan="7" style="color:#555;padding:24px;text-align:center">Nenhum artigo cadastrado. Importe do histórico ou crie um novo.</td></tr>'
     return
   }
   body.innerHTML = items.map(it => {
@@ -2257,6 +2259,7 @@ function renderArtTable() {
     const safeId = it.id.replace(/'/g, "\\'")
     return `<tr class="${activeClass}" data-id="${it.id}">
       <td><input class="art-inp" data-field="name" data-id="${it.id}" value="${(it.name||'').replace(/"/g,'&quot;')}"></td>
+      <td><input class="art-inp" data-field="sku" data-id="${it.id}" value="${(it.sku||'').replace(/"/g,'&quot;')}" placeholder="SKU" style="width:90px"></td>
       <td><select class="art-inp" data-field="category" data-id="${it.id}">${catSel}</select></td>
       <td style="text-align:right"><input class="art-inp art-inp-price" type="number" min="0" step="0.01" data-field="price" data-id="${it.id}" value="${it.price||''}"></td>
       <td style="text-align:right"><input class="art-inp art-inp-cost" type="number" min="0" step="0.01" data-field="cost" data-id="${it.id}" value="${it.cost||''}"></td>
@@ -2397,6 +2400,12 @@ function loadItemCosts() {
     const saved = JSON.parse(localStorage.getItem(ITEM_COST_KEY)) || {}
     Object.entries(saved).forEach(([k, v]) => { if (!(k in costs)) costs[k] = v })
   } catch {}
+  return costs
+}
+
+function loadSkuCosts() {
+  const costs = {}
+  Object.values(artigosSnapshot).forEach(p => { if (p.sku && p.cost) costs[p.sku] = p.cost })
   return costs
 }
 
