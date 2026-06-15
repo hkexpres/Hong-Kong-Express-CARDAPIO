@@ -528,6 +528,7 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   color:var(--white);font-size:13px;padding:9px 12px;outline:none;transition:border .15s;
 }
 .art-toolbar input:focus{border-color:var(--yellow)}
+.art-toolbar input#artNewSku{flex:0 0 90px;min-width:0;width:90px}
 .art-btn{
   padding:9px 18px;border-radius:8px;border:none;font-family:'Inter',sans-serif;
   font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;transition:opacity .15s;
@@ -2260,7 +2261,7 @@ function renderArtTable() {
     const safeId = it.id.replace(/'/g, "\\'")
     return `<tr class="${activeClass}" data-id="${it.id}">
       <td style="min-width:200px"><input class="art-inp" data-field="name" data-id="${it.id}" value="${(it.name||'').replace(/"/g,'&quot;')}"></td>
-      <td><input class="art-inp" data-field="sku" data-id="${it.id}" value="${(it.sku||'').replace(/"/g,'&quot;')}" placeholder="SKU" style="width:72px"></td>
+      <td><input class="art-inp" data-field="sku" data-id="${it.id}" value="${(it.sku||'').replace(/"/g,'&quot;')}" placeholder="SKU" style="width:88px"></td>
       <td><select class="art-inp" data-field="category" data-id="${it.id}">${catSel}</select></td>
       <td style="text-align:right"><input class="art-inp art-inp-price" type="number" min="0" step="0.01" data-field="price" data-id="${it.id}" value="${it.price||''}"></td>
       <td style="text-align:right"><input class="art-inp art-inp-cost" type="number" min="0" step="0.01" data-field="cost" data-id="${it.id}" value="${it.cost||''}"></td>
