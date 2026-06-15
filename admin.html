@@ -783,6 +783,7 @@ input[type="number"]{-moz-appearance:textfield}
         </select>
         <input type="number" id="artNewPrice" class="art-inp art-inp-price" min="0" step="0.01" placeholder="Preço R$">
         <input type="number" id="artNewCost" class="art-inp art-inp-cost" min="0" step="0.01" placeholder="Custo R$">
+        <input type="text" id="artNewSku" class="art-inp" style="width:100px" placeholder="SKU">
         <button class="art-btn art-btn-primary" id="artAddBtn">+ Criar</button>
       </div>
 
@@ -2333,11 +2334,13 @@ function addArtigoRow() {
   const cat   = document.getElementById('artNewCat').value
   const price = parseFloat(document.getElementById('artNewPrice').value) || null
   const cost  = parseFloat(document.getElementById('artNewCost').value)  || null
+  const sku   = document.getElementById('artNewSku').value.trim() || null
   const tmpId = '__new__' + Date.now()
-  artigosBuffer[tmpId] = { name, category: cat, price, cost, active: true }
+  artigosBuffer[tmpId] = { name, category: cat, price, cost, active: true, ...(sku ? { sku } : {}) }
   document.getElementById('artNewName').value  = ''
   document.getElementById('artNewPrice').value = ''
   document.getElementById('artNewCost').value  = ''
+  document.getElementById('artNewSku').value   = ''
   renderArtTable()
 }
 
