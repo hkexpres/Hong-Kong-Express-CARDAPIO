@@ -559,12 +559,6 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   font-size:11px;padding:3px 8px;cursor:pointer;white-space:nowrap;transition:all .15s;
 }
 .art-status-toggle.active{border-color:var(--green2);color:var(--green2)}
-.art-import-info{font-size:12px;color:var(--gray2);margin-left:8px}
-.art-migration-link{
-  background:none;border:none;color:var(--gray2);font-size:12px;cursor:pointer;
-  padding:4px 0;margin-bottom:10px;text-decoration:underline;text-underline-offset:3px;
-}
-.art-migration-link:hover{color:var(--gray)}
 
 /* ── CARGA MANUAL ── */
 .manual-grid{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}
@@ -787,15 +781,6 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
         <input type="number" id="artNewPrice" class="art-inp art-inp-price" min="0" step="0.01" placeholder="Preço R$">
         <input type="number" id="artNewCost" class="art-inp art-inp-cost" min="0" step="0.01" placeholder="Custo R$">
         <button class="art-btn art-btn-primary" id="artAddBtn">+ Criar</button>
-      </div>
-
-      <div id="artMigrationWrap">
-        <button class="art-migration-link" id="artMigrationToggle" style="display:none">⚙ Ferramentas de configuração inicial</button>
-        <div class="art-toolbar" id="artMigrationTools" style="margin-bottom:14px">
-          <button class="art-btn art-btn-ghost" id="artImportBtn">⬇ Importar do histórico</button>
-          <button class="art-btn art-btn-ghost" id="artMigrateBtn">🔄 Migrar custos do navegador</button>
-          <span class="art-import-info" id="artImportInfo"></span>
-        </div>
       </div>
 
       <div style="overflow-x:auto">
@@ -2350,101 +2335,12 @@ function addArtigoRow() {
   renderArtTable()
 }
 
-async function importFromHistory() {
-  const info = document.getElementById('artImportInfo')
-  info.textContent = 'Importando…'
-  try {
-    // ensure snapshot is loaded first
-    if (!Object.keys(artigosSnapshot).length) await loadArtigos()
-
-    const snap = await db.collection('orders').get()
-    const namesSeen = new Set(Object.values(artigosSnapshot).map(p => p.name))
-    const toAdd = {}
-    snap.docs.forEach(d => {
-      ;(d.data().items || []).forEach(it => {
-        if (!namesSeen.has(it.name) && !toAdd[it.name]) {
-          toAdd[it.name] = {
-            name: it.name,
-            category: classifyItem(it.name),
-            price: it.price || null,
-            cost: null,
-            active: true
-          }
-        }
-      })
-    })
-    const news = Object.values(toAdd)
-    if (!news.length) { info.textContent = 'Todos os itens do histórico já estão cadastrados.'; return }
-    const batch = db.batch()
-    news.forEach(p => {
-      const ref = db.collection('products').doc()
-      batch.set(ref, { ...p, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
-    })
-    await batch.commit()
-    cachedUniqueItems = null
-    info.textContent = `✓ ${news.length} artigo(s) importado(s).`
-    await initArtigos()
-  } catch (e) {
-    console.error('importFromHistory error:', e)
-    info.textContent = `Erro: ${e.message}`
-  }
-}
-
-async function migrateLocalStorageCosts() {
-  const info = document.getElementById('artImportInfo')
-  info.textContent = 'Migrando…'
-  try {
-    if (!Object.keys(artigosSnapshot).length) await loadArtigos()
-
-    // Read legacy localStorage costs (raw, not from Firestore snapshot)
-    let rawCosts = {}
-    try { rawCosts = JSON.parse(localStorage.getItem(ITEM_COST_KEY)) || {} } catch {}
-    const cats = (() => { try { return JSON.parse(localStorage.getItem(ITEM_CATS_KEY)) || {} } catch { return {} } })()
-
-    const allByName = {}
-    Object.values(artigosSnapshot).forEach(p => { allByName[p.name] = p })
-
-    const toUpdate = []
-    for (const [name, cost] of Object.entries(rawCosts)) {
-      if (allByName[name] && cost > 0) toUpdate.push({ id: allByName[name].id, cost, cat: cats[name] || null })
-    }
-    if (!toUpdate.length) {
-      info.textContent = 'Nenhum custo encontrado no navegador. Importe do histórico primeiro.'
-      return
-    }
-    const batch = db.batch()
-    toUpdate.forEach(({ id, cost, cat }) => {
-      const upd = { cost }
-      if (cat) upd.category = cat
-      batch.update(db.collection('products').doc(id), upd)
-    })
-    await batch.commit()
-    info.textContent = `✓ ${toUpdate.length} custo(s) migrado(s) do navegador.`
-    cachedUniqueItems = null
-    await initArtigos()
-  } catch (e) {
-    console.error('migrateLocalStorageCosts error:', e)
-    info.textContent = `Erro: ${e.message}`
-  }
-}
-
-function updateMigrationToolsVisibility() {
-  // Once the master has articles, tuck the one-time migration tools behind
-  // a discreet toggle so the tab stays clean.
-  const hasItems = Object.keys(artigosSnapshot).length > 0
-  const tools  = document.getElementById('artMigrationTools')
-  const toggle = document.getElementById('artMigrationToggle')
-  if (hasItems) { tools.style.display = 'none'; toggle.style.display = 'inline-block' }
-  else          { tools.style.display = 'flex'; toggle.style.display = 'none' }
-}
-
 async function initArtigos() {
   const body = document.getElementById('artTableBody')
   body.innerHTML = '<tr><td colspan="6" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr>'
   try {
     await loadArtigos()
     renderArtTable()
-    updateMigrationToolsVisibility()
   } catch (e) {
     console.error('Artigos load error:', e)
     body.innerHTML = `<tr><td colspan="6" style="color:#F44336;padding:20px;text-align:center">Erro ao carregar: ${e.message}</td></tr>`
@@ -2514,12 +2410,6 @@ function getItemCat(itemName) {
 document.getElementById('artAddBtn').addEventListener('click', addArtigoRow)
 document.getElementById('artNewName').addEventListener('keydown', e => { if (e.key === 'Enter') addArtigoRow() })
 document.getElementById('artSaveBtn').addEventListener('click', saveArtigos)
-document.getElementById('artImportBtn').addEventListener('click', importFromHistory)
-document.getElementById('artMigrateBtn').addEventListener('click', migrateLocalStorageCosts)
-document.getElementById('artMigrationToggle').addEventListener('click', () => {
-  const tools = document.getElementById('artMigrationTools')
-  tools.style.display = tools.style.display === 'none' ? 'flex' : 'none'
-})
 
 // ════════════════ CARGA MANUAL DE PEDIDOS ════════════════
 let manualLines = []
