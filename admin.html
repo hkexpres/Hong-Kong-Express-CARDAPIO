@@ -1824,6 +1824,7 @@ async function loadFinancas() {
   const toDate   = endOfDay(new Date(to + 'T00:00:00'))
 
   try {
+    if (Object.keys(artigosSnapshot).length === 0) await loadArtigos()
     const snap = await db.collection('orders')
       .where('createdAt', '>=', fromDate)
       .where('createdAt', '<=', toDate)
