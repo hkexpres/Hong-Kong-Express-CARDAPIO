@@ -1430,8 +1430,40 @@ function injectButtons(){
   })
 }
 
-injectButtons()
-renderCart()
+async function syncPricesFromFirestore() {
+  try {
+    const snap = await db.collection('products').get()
+    const priceMap = {}
+    snap.docs.forEach(d => {
+      const p = d.data()
+      if (p.name && p.price != null && p.active !== false) priceMap[p.name] = p.price
+    })
+    document.querySelectorAll('.plate-card').forEach(card => {
+      const dishEl = card.querySelector('.plate-name')
+      if (!dishEl) return
+      const dishName = dishEl.textContent
+        .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+        .replace(/\s+/g, ' ').trim()
+      card.querySelectorAll('.pchip').forEach(chip => {
+        const labelEl = chip.querySelector('.pchip-label')
+        const priceEl = chip.querySelector('.pchip-price')
+        if (!labelEl || !priceEl) return
+        const fullName = dishName + ' · ' + labelEl.textContent.trim()
+        if (priceMap[fullName] != null) {
+          const v = priceMap[fullName]
+          priceEl.textContent = v % 1 === 0 ? 'R$ ' + v : 'R$ ' + v.toFixed(2).replace('.', ',')
+        }
+      })
+    })
+  } catch (e) {
+    console.warn('syncPrices:', e.message)
+  }
+}
+
+syncPricesFromFirestore().then(() => {
+  injectButtons()
+  renderCart()
+})
 
 // ── INTERACTIONS ──
 const fabEl = document.getElementById('cartFab')
