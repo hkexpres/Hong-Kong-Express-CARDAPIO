@@ -1500,11 +1500,6 @@ async function syncPricesFromFirestore() {
   }
 }
 
-syncPricesFromFirestore().then(() => {
-  injectButtons()
-  renderCart()
-})
-
 // ── INTERACTIONS ──
 const fabEl = document.getElementById('cartFab')
 document.getElementById('cartBar').addEventListener('click', ()=>{
@@ -1524,6 +1519,11 @@ firebase.initializeApp({
   appId: '1:528788242727:web:9c4862eeab5c16db82a902'
 })
 const db = firebase.firestore()
+
+syncPricesFromFirestore().then(() => {
+  injectButtons()
+  renderCart()
+})
 
 // ── CRM STORAGE ──
 const CRM_KEY = 'hke_customer_v1'
