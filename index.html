@@ -1438,6 +1438,12 @@ async function syncPricesFromFirestore() {
       const p = d.data()
       if (p.name && p.price != null && p.active !== false) priceMap[p.name] = p.price
     })
+    const fmt = v => v % 1 === 0 ? 'R$ ' + v : 'R$ ' + v.toFixed(2).replace('.', ',')
+    const apply = (el, name) => {
+      if (el && priceMap[name] != null) el.textContent = fmt(priceMap[name])
+    }
+
+    // 1) Pratos base + destaques: nome = "PRATO · Variante"
     document.querySelectorAll('.plate-card').forEach(card => {
       const dishEl = card.querySelector('.plate-name')
       if (!dishEl) return
@@ -1446,14 +1452,23 @@ async function syncPricesFromFirestore() {
         .replace(/\s+/g, ' ').trim()
       card.querySelectorAll('.pchip').forEach(chip => {
         const labelEl = chip.querySelector('.pchip-label')
-        const priceEl = chip.querySelector('.pchip-price')
-        if (!labelEl || !priceEl) return
-        const fullName = dishName + ' · ' + labelEl.textContent.trim()
-        if (priceMap[fullName] != null) {
-          const v = priceMap[fullName]
-          priceEl.textContent = v % 1 === 0 ? 'R$ ' + v : 'R$ ' + v.toFixed(2).replace('.', ',')
-        }
+        if (!labelEl) return
+        apply(chip.querySelector('.pchip-price'), dishName + ' · ' + labelEl.textContent.trim())
       })
+    })
+
+    // 2) Combos: nome = texto de .combo-name (igual que injectButtons)
+    document.querySelectorAll('.combo-card').forEach(card => {
+      const nameEl = card.querySelector('.combo-name')
+      if (!nameEl) return
+      apply(card.querySelector('.combo-price'), nameEl.textContent.trim())
+    })
+
+    // 3) Gyozas: nome = "Gyoza " + qty
+    document.querySelectorAll('.gprice').forEach(g => {
+      const qtyEl = g.querySelector('.gprice-qty')
+      if (!qtyEl) return
+      apply(g.querySelector('.gprice-val'), 'Gyoza ' + qtyEl.textContent.trim())
     })
   } catch (e) {
     console.warn('syncPrices:', e.message)
