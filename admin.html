@@ -1912,7 +1912,7 @@ function renderFinancas(orders) {
   }).join('')
 
   let orderRows = ''
-  Object.entries(byDate).sort().forEach(([date, dayRows]) => {
+  Object.entries(byDate).sort(([a],[b]) => b.localeCompare(a)).forEach(([date, dayRows]) => {
     dayRows.forEach(r => {
       orderRows += `<tr>
         <td>${date}</td><td>${fmtTime(r.createdAt)}</td>
