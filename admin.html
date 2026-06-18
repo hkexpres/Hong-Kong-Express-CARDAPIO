@@ -2185,7 +2185,7 @@ async function fetchUniqueItems() {
     prodSnap.docs.forEach(d => {
       const p = d.data()
       if (p.active !== false) {
-        map[p.name] = { name: p.name, cat: p.category || classifyItem(p.name), price: p.price || null, cost: p.cost || null }
+        map[p.name] = { name: p.name, cat: (p.category || '').toLowerCase() || classifyItem(p.name), price: p.price || null, cost: p.cost || null }
       }
     })
   }
