@@ -591,6 +591,7 @@ input[type="number"]{-moz-appearance:textfield}
       <button class="tab-btn" data-tab="crm">CRM</button>
       <button class="tab-btn" data-tab="artigos">Catálogo</button>
       <button class="tab-btn" data-tab="insumos">Insumos</button>
+      <button class="tab-btn" data-tab="fichas">Fichas</button>
       <button class="tab-btn" data-tab="financas">Finanças</button>
     </nav>
     <button id="logoutBtn">Sair</button>
@@ -794,6 +795,49 @@ input[type="number"]{-moz-appearance:textfield}
       <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
         <button class="art-btn art-btn-primary" id="insSaveBtn" onclick="saveInsumos()">Salvar alterações</button>
         <span class="fin-saved-msg" id="insSavedMsg">✓ Salvo</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FICHAS TÉCNICAS -->
+  <div class="tab-content" id="tab-fichas" style="display:none">
+    <div class="fin-config-card">
+      <div class="fin-config-title">Fichas Técnicas</div>
+      <div class="fin-config-sub">Defina quanto de cada insumo leva cada prato (g / ml / unidade). Os combos calculam-se somando os pratos que os compõem. Alimenta o módulo de Consumos para controle e previsão de compras.</div>
+      <div class="manual-row">
+        <label>Prato / Acompanhamento
+          <select id="fichaProdSelect" class="art-inp" style="width:100%">
+            <option value="">Carregando…</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="fin-config-card" id="fichaEditorCard" style="display:none">
+      <div class="fin-config-title" id="fichaEditorTitle"></div>
+      <div class="fin-config-sub">Adicione cada insumo com sua quantidade. Use os atalhos para preencher proteína e embalagem padrão.</div>
+      <div class="art-toolbar">
+        <select id="fichaInsSelect" class="art-inp" style="width:240px"></select>
+        <input type="number" id="fichaInsQty" class="art-inp" style="width:120px" min="0" step="1" placeholder="Quantidade">
+        <span id="fichaInsUnit" style="color:#aaa;align-self:center;min-width:30px"></span>
+        <button class="art-btn art-btn-primary" onclick="addFichaLine()">+ Adicionar</button>
+        <button class="art-btn" onclick="autoFillProtein()" title="Preencher proteína (240g, ou 165g em Chow Fan/Mein)">⚡ Proteína</button>
+        <button class="art-btn" onclick="autoFillPackaging()" title="Adicionar 1 box + 1 bolsa">📦 Embalagem</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="art-table">
+          <thead><tr>
+            <th>Insumo</th>
+            <th>Tipo</th>
+            <th style="text-align:right">Quantidade</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="fichaLinesBody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:14px;align-items:center">
+        <button class="art-btn art-btn-primary" onclick="saveFicha()">Salvar ficha</button>
+        <span class="fin-saved-msg" id="fichaSavedMsg">✓ Salvo</span>
       </div>
     </div>
   </div>
@@ -1035,6 +1079,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'crm') loadCRM()
     if (tab === 'artigos') initArtigos()
     if (tab === 'insumos') initInsumos()
+    if (tab === 'fichas') initFichas()
     if (tab === 'financas') initFinancas()
     if (tab === 'manual') initManual()
     if (tab === 'detalhe') {
@@ -2502,6 +2547,189 @@ async function initInsumos() {
   } catch (e) {
     console.error('Insumos load error:', e)
     body.innerHTML = `<tr><td colspan="5" style="color:#F44336;padding:20px;text-align:center">Erro ao carregar: ${e.message}</td></tr>`
+  }
+}
+
+// ── FICHAS TÉCNICAS ──
+// Stored in the 'recipes' collection, doc id = product id.
+// Shape: { productName, category, lines: [{ insumoId, qty }], updatedAt }
+let fichaProducts = []   // editable products (pratos + acomp)
+let fichaInsumos  = []   // active insumos
+let fichaMap      = {}   // productId -> ficha data
+let fichaCurrentId = null
+let fichaDraft    = []   // working lines for the selected product: [{ insumoId, qty }]
+
+async function loadFichasData() {
+  const [prodSnap, insSnap, fichaSnap] = await Promise.all([
+    db.collection('products').get(),
+    db.collection('insumos').get(),
+    db.collection('recipes').get(),
+  ])
+  fichaProducts = prodSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(p => ['pratos', 'acomp'].includes(p.category) && p.active !== false)
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  fichaInsumos = insSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(i => i.active !== false)
+    .sort((a, b) => {
+      const ti = INS_TYPE_ORDER.indexOf(a.type) - INS_TYPE_ORDER.indexOf(b.type)
+      return ti !== 0 ? ti : (a.name || '').localeCompare(b.name || '')
+    })
+  fichaMap = {}
+  fichaSnap.docs.forEach(d => { fichaMap[d.id] = d.data() })
+}
+
+function insumoById(id) { return fichaInsumos.find(i => i.id === id) }
+
+function renderFichaProdSelect() {
+  const sel = document.getElementById('fichaProdSelect')
+  sel.innerHTML = '<option value="">— Selecione um prato —</option>' +
+    fichaProducts.map(p => {
+      const has = fichaMap[p.id] && (fichaMap[p.id].lines || []).length
+      return `<option value="${p.id}">${has ? '✓ ' : '○ '}${(p.name || '').replace(/"/g, '&quot;')}</option>`
+    }).join('')
+}
+
+function renderFichaInsSelect() {
+  const sel = document.getElementById('fichaInsSelect')
+  let html = '', lastType = null
+  fichaInsumos.forEach(i => {
+    if (i.type !== lastType) {
+      if (lastType !== null) html += '</optgroup>'
+      html += `<optgroup label="${INS_TYPE_LABELS[i.type] || i.type}">`
+      lastType = i.type
+    }
+    html += `<option value="${i.id}" data-unit="${i.unit}">${(i.name || '').replace(/"/g, '&quot;')}</option>`
+  })
+  if (lastType !== null) html += '</optgroup>'
+  sel.innerHTML = html
+  updateFichaUnitHint()
+}
+
+function updateFichaUnitHint() {
+  const sel = document.getElementById('fichaInsSelect')
+  const opt = sel.options[sel.selectedIndex]
+  document.getElementById('fichaInsUnit').textContent = opt ? (opt.dataset.unit || '') : ''
+}
+
+function onFichaProdChange() {
+  fichaCurrentId = document.getElementById('fichaProdSelect').value || null
+  const card = document.getElementById('fichaEditorCard')
+  if (!fichaCurrentId) { card.style.display = 'none'; return }
+  const prod = fichaProducts.find(p => p.id === fichaCurrentId)
+  document.getElementById('fichaEditorTitle').textContent = 'Ficha: ' + (prod ? prod.name : '')
+  const existing = fichaMap[fichaCurrentId]
+  fichaDraft = existing ? (existing.lines || []).map(l => ({ ...l })) : []
+  card.style.display = 'block'
+  renderFichaLines()
+}
+
+function renderFichaLines() {
+  const body = document.getElementById('fichaLinesBody')
+  if (!fichaDraft.length) {
+    body.innerHTML = '<tr><td colspan="4" style="color:#555;padding:20px;text-align:center">Nenhum insumo ainda. Use os atalhos ou adicione manualmente.</td></tr>'
+    return
+  }
+  body.innerHTML = fichaDraft.map((l, idx) => {
+    const ins = insumoById(l.insumoId)
+    const name = ins ? ins.name : '⚠ insumo removido'
+    const type = ins ? (INS_TYPE_LABELS[ins.type] || ins.type) : '—'
+    const unit = ins ? ins.unit : ''
+    return `<tr>
+      <td style="min-width:180px">${name}</td>
+      <td>${type}</td>
+      <td style="text-align:right">
+        <input class="art-inp" type="number" min="0" step="1" value="${l.qty}" style="width:90px;text-align:right"
+               onchange="updateFichaQty(${idx}, this.value)"> ${unit}
+      </td>
+      <td><button class="art-btn art-btn-danger" style="padding:5px 10px;font-size:12px" onclick="removeFichaLine(${idx})">✕</button></td>
+    </tr>`
+  }).join('')
+}
+
+function updateFichaQty(idx, val) {
+  if (fichaDraft[idx]) fichaDraft[idx].qty = parseFloat(val) || 0
+}
+
+function removeFichaLine(idx) {
+  fichaDraft.splice(idx, 1)
+  renderFichaLines()
+}
+
+function addFichaLine() {
+  const insId = document.getElementById('fichaInsSelect').value
+  const qty   = parseFloat(document.getElementById('fichaInsQty').value)
+  if (!insId) return
+  if (!qty || qty <= 0) { document.getElementById('fichaInsQty').focus(); return }
+  const existing = fichaDraft.find(l => l.insumoId === insId)
+  if (existing) existing.qty = qty
+  else fichaDraft.push({ insumoId: insId, qty })
+  document.getElementById('fichaInsQty').value = ''
+  renderFichaLines()
+}
+
+function setFichaLine(insName, qty) {
+  const ins = fichaInsumos.find(i => i.name === insName)
+  if (!ins) return false
+  const existing = fichaDraft.find(l => l.insumoId === ins.id)
+  if (existing) existing.qty = qty
+  else fichaDraft.push({ insumoId: ins.id, qty })
+  return true
+}
+
+function autoFillProtein() {
+  const prod = fichaProducts.find(p => p.id === fichaCurrentId)
+  if (!prod) return
+  const n = (prod.name || '').toLowerCase()
+  let protein
+  if (n.includes('porco') || n.includes('suíno') || n.includes('suino') || n.includes('lombo')) protein = 'Porco lombo suíno'
+  else if (n.includes('carne') || n.includes('boi') || n.includes('res') || n.includes('coxa')) protein = 'Carne coxa moída'
+  else protein = 'Frango filé'
+  const qty = (n.includes('chow') || n.includes('mein') || n.includes('fan')) ? 165 : 240
+  if (!setFichaLine(protein, qty)) { alert('Proteína "' + protein + '" não encontrada nos Insumos.'); return }
+  renderFichaLines()
+}
+
+function autoFillPackaging() {
+  const okBox   = setFichaLine('Box antivazamento', 1)
+  const okBolsa = setFichaLine('Bolsa de papel', 1)
+  if (!okBox || !okBolsa) alert('Box ou Bolsa não encontrados nos Insumos.')
+  renderFichaLines()
+}
+
+async function saveFicha() {
+  if (!fichaCurrentId) return
+  const prod = fichaProducts.find(p => p.id === fichaCurrentId)
+  const lines = fichaDraft.filter(l => l.qty > 0).map(l => ({ insumoId: l.insumoId, qty: l.qty }))
+  try {
+    await db.collection('recipes').doc(fichaCurrentId).set({
+      productName: prod ? prod.name : '',
+      category: prod ? prod.category : '',
+      lines,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    })
+    fichaMap[fichaCurrentId] = { productName: prod ? prod.name : '', lines }
+    renderFichaProdSelect()
+    document.getElementById('fichaProdSelect').value = fichaCurrentId
+    const msg = document.getElementById('fichaSavedMsg')
+    msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500)
+  } catch (e) { alert('Erro ao salvar ficha: ' + e.message) }
+}
+
+async function initFichas() {
+  const sel = document.getElementById('fichaProdSelect')
+  sel.innerHTML = '<option value="">Carregando…</option>'
+  try {
+    await loadFichasData()
+    renderFichaProdSelect()
+    renderFichaInsSelect()
+    document.getElementById('fichaEditorCard').style.display = 'none'
+    sel.onchange = onFichaProdChange
+    document.getElementById('fichaInsSelect').onchange = updateFichaUnitHint
+  } catch (e) {
+    console.error('Fichas load error:', e)
+    sel.innerHTML = `<option value="">Erro: ${e.message}</option>`
   }
 }
 
