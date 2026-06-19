@@ -1147,6 +1147,8 @@ function buildDonut(canvasId, centerId, legendId, orders) {
   const labels = sorted.map(([g]) => g)
   const data   = sorted.map(([, v]) => v.qty)
   const colors = labels.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
+  // soma real das fatias do donut (inclui bebidas/molhos) — base dos %
+  const totalQty = data.reduce((a, b) => a + b, 0) || 1
 
   centerEl.innerHTML = `
     <div class="donut-center-val">${fmtBRL(totalBRL)}</div>
@@ -1157,7 +1159,7 @@ function buildDonut(canvasId, centerId, legendId, orders) {
     <div class="legend-item">
       <span class="legend-dot" style="background:${colors[i]}"></span>
       <span class="legend-name">${g}</span>
-      <span class="legend-pct">${Math.round(v.qty / totalPlatos * 100)}%</span>
+      <span class="legend-pct">${Math.round(v.qty / totalQty * 100)}%</span>
     </div>
   `).join('')
 
@@ -1184,14 +1186,14 @@ function buildDonut(canvasId, centerId, legendId, orders) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx2 => ` ${ctx2.label}: ${ctx2.raw} platos (${Math.round(ctx2.raw / totalPlatos * 100)}%)`
+            label: ctx2 => ` ${ctx2.label}: ${ctx2.raw} un (${Math.round(ctx2.raw / totalQty * 100)}%)`
           }
         },
         datalabels: {
           color: '#000',
           font: { weight: 'bold', size: 11 },
           formatter: (value) => {
-            const pct = Math.round(value / totalPlatos * 100)
+            const pct = Math.round(value / totalQty * 100)
             return pct >= 5 ? pct + '%' : ''
           }
         }
