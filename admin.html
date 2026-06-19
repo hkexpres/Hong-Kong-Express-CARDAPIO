@@ -1531,6 +1531,10 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
 
   // One row per order with group breakdown (qty + BRL per group)
   const mkGroup = () => Object.fromEntries(ITEM_GROUPS.map(g => [g.key, { qty: 0, brl: 0 }]))
+  const statusBadge = s => s === 'confirmed' ? '<span style="color:#81C784;white-space:nowrap;font-size:12px">● Confirmado</span>'
+    : s === 'cancelled' ? '<span style="color:#F44336;white-space:nowrap;font-size:12px">● Cancelado</span>'
+    : '<span style="color:#F0E870;white-space:nowrap;font-size:12px">● Pendente</span>'
+
   const orderRows = orders.map((o, idx) => {
     const g = mkGroup()
     ;(o.items || []).forEach(it => {
@@ -1538,7 +1542,7 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
       g[k].qty += it.qty
       g[k].brl += it.qty * it.price
     })
-    return { date: fmtDate(o.createdAt), time: fmtTime(o.createdAt), total: o.total || 0, idx, ...g }
+    return { date: fmtDate(o.createdAt), time: fmtTime(o.createdAt), total: o.total || 0, idx, status: o.status || 'pending', ...g }
   })
 
   // Date subtotals
@@ -1590,19 +1594,19 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
   Object.entries(byDate).sort().forEach(([date, sub]) => {
     orderRows.filter(r => r.date === date).forEach(r => {
       tableRows += `<tr class="order-row" onclick="openOrderModal(${r.idx})" title="Clique para ver os itens">
-        <td>${r.date}</td><td>${r.time}</td>
+        <td>${r.date}</td><td>${r.time}</td><td>${statusBadge(r.status)}</td>
         ${ITEM_GROUPS.map(g => `<td style="text-align:right;line-height:1.6">${gFmt(r[g.key])}</td>`).join('')}
         <td style="text-align:right;font-weight:700">${fmtBRL(r.total)}</td>
       </tr>`
     })
     tableRows += `<tr class="subtotal-row">
-      <td colspan="2" style="text-align:right">Subtotal ${date}</td>
+      <td colspan="3" style="text-align:right">Subtotal ${date}</td>
       ${ITEM_GROUPS.map(g => `<td style="text-align:right;line-height:1.6">${gFmtSub(sub[g.key])}</td>`).join('')}
       <td style="text-align:right">${fmtBRL(sub.total)}</td>
     </tr>`
   })
   tableRows += `<tr class="grand-total-row">
-    <td colspan="2" style="text-align:right">TOTAL GERAL</td>
+    <td colspan="3" style="text-align:right">TOTAL GERAL</td>
     ${ITEM_GROUPS.map(g => `<td style="text-align:right;line-height:1.6">${gFmtSub(grand[g.key])}</td>`).join('')}
     <td style="text-align:right">${fmtBRL(grand.total)}</td>
   </tr>`
@@ -1614,7 +1618,7 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
     <div class="detalhe-table-wrap">
       <table>
         <thead><tr>
-          <th>Data</th><th>Hora</th>${gHeaders}
+          <th>Data</th><th>Hora</th><th>Status</th>${gHeaders}
           <th style="text-align:right">Total</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
