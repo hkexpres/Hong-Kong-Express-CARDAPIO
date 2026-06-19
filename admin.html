@@ -218,6 +218,11 @@ input{font-family:'Inter',sans-serif}
   color-scheme:dark;
 }
 .filters-row input[type=date]:focus{border-color:var(--red)}
+.filters-row select{
+  padding:8px 10px;background:var(--bg3);border:1px solid #333;border-radius:8px;
+  color:var(--white);font-size:13px;outline:none;cursor:pointer;
+}
+.filters-row select:focus{border-color:var(--red)}
 .btn-filter{
   padding:9px 18px;border-radius:8px;border:none;
   background:var(--red);color:#fff;font-size:13px;font-weight:600;
@@ -678,6 +683,14 @@ input[type="number"]{-moz-appearance:textfield}
     <div class="filters-row">
       <label>De: <input type="date" id="filterFrom"></label>
       <label>Até: <input type="date" id="filterTo"></label>
+      <label>Status:
+        <select id="filterStatus">
+          <option value="confirmed">Confirmados</option>
+          <option value="cancelled">Cancelados</option>
+          <option value="pending">Pendentes</option>
+          <option value="all">Todos</option>
+        </select>
+      </label>
       <button class="btn-filter" id="filterBtn">Filtrar</button>
       <button class="btn-export" id="exportBtn">📥 Exportar Excel</button>
     </div>
@@ -1398,6 +1411,7 @@ async function updateStatus(id, status) {
 let detalheOrders = []
 
 document.getElementById('filterBtn').addEventListener('click', loadDetalhe)
+document.getElementById('filterStatus').addEventListener('change', loadDetalhe)
 document.getElementById('exportBtn').addEventListener('click', exportExcel)
 
 async function loadDetalhe() {
@@ -1418,15 +1432,18 @@ async function loadDetalhe() {
       .orderBy('createdAt', 'asc')
       .get()
 
+    const statusFilter = document.getElementById('filterStatus').value
     const allInRange = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     const statusCount = { confirmed: 0, pending: 0, cancelled: 0, outros: 0 }
     allInRange.forEach(o => {
       if (statusCount[o.status] !== undefined) statusCount[o.status]++
       else statusCount.outros++
     })
-    detalheOrders = allInRange.filter(o => o.status === 'confirmed')
+    detalheOrders = statusFilter === 'all'
+      ? allInRange
+      : allInRange.filter(o => o.status === statusFilter)
     const nonConfirmed = allInRange.filter(o => o.status !== 'confirmed')
-    renderDetalhe(detalheOrders, statusCount, nonConfirmed)
+    renderDetalhe(detalheOrders, statusCount, nonConfirmed, statusFilter)
   } catch(e) {
     el.innerHTML = `<div class="empty-state">Erro ao carregar: ${e.message}</div>`
     console.error(e)
@@ -1496,11 +1513,18 @@ async function vendaStatusUpdate(id, newStatus) {
   }
 }
 
-function renderDetalhe(orders, statusCount, nonConfirmed) {
+const STATUS_LABELS = { confirmed: 'confirmado', cancelled: 'cancelado', pending: 'pendente', all: '' }
+
+function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
   const el = document.getElementById('detalheContent')
+  // banner de não-confirmados só faz sentido na visão de Confirmados
+  const banner = (statusFilter === 'confirmed' || !statusFilter)
+    ? statusBanner(statusCount || {confirmed:0}, nonConfirmed || [])
+    : ''
   if (!orders.length) {
-    el.innerHTML = statusBanner(statusCount || {confirmed:0}, nonConfirmed || []) +
-      '<div class="empty-state">Nenhum pedido confirmado no período.</div>'
+    const lbl = STATUS_LABELS[statusFilter] || 'confirmado'
+    el.innerHTML = banner +
+      `<div class="empty-state">Nenhum pedido ${lbl} no período.</div>`
     detalheSummaryData = []
     return
   }
@@ -1586,7 +1610,7 @@ function renderDetalhe(orders, statusCount, nonConfirmed) {
   const gHeaders = ITEM_GROUPS.map(g => `<th style="text-align:right">${g.label}</th>`).join('')
 
   el.innerHTML = `
-    ${statusBanner(statusCount || {confirmed: orders.length}, nonConfirmed || [])}
+    ${banner}
     <div class="detalhe-table-wrap">
       <table>
         <thead><tr>
