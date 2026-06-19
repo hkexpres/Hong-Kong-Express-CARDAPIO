@@ -2565,6 +2565,17 @@ function openOrderModal(idx) {
     </div>`).join('')
   document.getElementById('orderModalTotal').textContent = fmtBRL(o.total || 0)
 
+  // edição de data/hora do pedido
+  const dt = o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.createdAt)
+  const pad = n => String(n).padStart(2, '0')
+  const dtLocal = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+  document.getElementById('orderModalDateEdit').innerHTML = `
+    <button id="orderDateToggle" onclick="toggleDateEdit()" style="background:none;border:1px solid #444;color:#aaa;border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer">✎ Corrigir data/hora</button>
+    <div id="orderDateForm" style="display:none;margin-top:8px;gap:8px;align-items:center">
+      <input type="datetime-local" id="orderDateInput" value="${dtLocal}" style="background:#1a1a1a;border:1px solid #444;color:#eee;border-radius:8px;padding:8px;font-size:13px">
+      <button onclick="modalDateUpdate('${o.id}')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;margin-left:8px">Salvar</button>
+    </div>`
+
   // ações de status conforme estado atual
   const act = document.getElementById('orderModalActions')
   if (o.status === 'pending') {
@@ -2580,6 +2591,31 @@ function openOrderModal(idx) {
     act.innerHTML = ''
   }
   document.getElementById('orderModal').style.display = 'flex'
+}
+
+function toggleDateEdit() {
+  const f = document.getElementById('orderDateForm')
+  const t = document.getElementById('orderDateToggle')
+  const open = f.style.display === 'none'
+  f.style.display = open ? 'flex' : 'none'
+  t.style.display = open ? 'none' : 'inline-block'
+}
+
+async function modalDateUpdate(id) {
+  const val = document.getElementById('orderDateInput').value
+  if (!val) { alert('Informe a data e hora.'); return }
+  const btn = document.querySelector('#orderDateForm button')
+  btn.disabled = true; btn.textContent = 'Salvando…'
+  try {
+    await db.collection('orders').doc(id).update({
+      createdAt: firebase.firestore.Timestamp.fromDate(new Date(val))
+    })
+    closeOrderModal()
+    loadDetalhe()
+  } catch(e) {
+    alert('Erro ao salvar data: ' + e.message)
+    btn.disabled = false; btn.textContent = 'Salvar'
+  }
 }
 
 async function modalStatusUpdate(id, newStatus) {
@@ -2611,6 +2647,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOrderMo
       <span>Total</span>
       <span id="orderModalTotal"></span>
     </div>
+    <div id="orderModalDateEdit" style="margin-top:14px"></div>
     <div id="orderModalActions" style="margin-top:16px"></div>
   </div>
 </div>
