@@ -2385,9 +2385,14 @@ async function saveManualOrder() {
 
   try {
     await db.collection('orders').add(orderData)
-    // invalidate caches so other tabs and pickers pick up the new data
+    // invalidate customer cache; rebuild product cache and repopulate dropdown
     cachedCustomers = null
     cachedUniqueItems = null
+    fetchUniqueItems().then(() => {
+      manualProdIndex = {}
+      ;(cachedUniqueItems || []).forEach(it => { manualProdIndex[it.name] = it })
+      populateManualProducts(document.getElementById('manualCat').value)
+    })
     const msg = document.getElementById('manualSavedMsg')
     msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500)
     // reset form
