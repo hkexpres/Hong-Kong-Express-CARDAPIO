@@ -543,6 +543,21 @@ input[type="number"]{-moz-appearance:textfield}
 .manual-save-btn:hover{opacity:.88}
 .manual-save-btn:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:760px){.manual-grid{grid-template-columns:1fr}.manual-summary-card{position:static}}
+
+/* ── Modal detalhe de pedido ── */
+.order-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
+.order-modal{background:var(--bg2);border:1px solid rgba(144,64,64,0.35);border-radius:16px;padding:24px 28px;width:100%;max-width:460px;max-height:80vh;overflow-y:auto}
+.order-modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.order-modal-title{font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;color:var(--yellow)}
+.order-modal-close{background:none;border:none;color:var(--gray);font-size:20px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px}
+.order-modal-close:hover{color:var(--white)}
+.order-modal-item{display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px}
+.order-modal-item-qty{color:var(--yellow);font-weight:700;min-width:28px;text-align:right}
+.order-modal-item-name{flex:1;color:var(--white)}
+.order-modal-item-price{color:var(--gray);white-space:nowrap}
+.order-modal-total{display:flex;justify-content:space-between;padding-top:14px;font-weight:700;font-size:14px;color:var(--yellow)}
+.order-row{cursor:pointer}
+.order-row:hover td{background:rgba(240,232,112,0.05)}
 </style>
 </head>
 <body>
@@ -1410,14 +1425,14 @@ function renderDetalhe(orders) {
 
   // One row per order with group breakdown (qty + BRL per group)
   const mkGroup = () => Object.fromEntries(ITEM_GROUPS.map(g => [g.key, { qty: 0, brl: 0 }]))
-  const orderRows = orders.map(o => {
+  const orderRows = orders.map((o, idx) => {
     const g = mkGroup()
     ;(o.items || []).forEach(it => {
       const k = classifyItem(it.name)
       g[k].qty += it.qty
       g[k].brl += it.qty * it.price
     })
-    return { date: fmtDate(o.createdAt), time: fmtTime(o.createdAt), total: o.total || 0, ...g }
+    return { date: fmtDate(o.createdAt), time: fmtTime(o.createdAt), total: o.total || 0, idx, ...g }
   })
 
   // Date subtotals
@@ -1468,7 +1483,7 @@ function renderDetalhe(orders) {
   let tableRows = ''
   Object.entries(byDate).sort().forEach(([date, sub]) => {
     orderRows.filter(r => r.date === date).forEach(r => {
-      tableRows += `<tr>
+      tableRows += `<tr class="order-row" onclick="openOrderModal(${r.idx})" title="Clique para ver os itens">
         <td>${r.date}</td><td>${r.time}</td>
         ${ITEM_GROUPS.map(g => `<td style="text-align:right;line-height:1.6">${gFmt(r[g.key])}</td>`).join('')}
         <td style="text-align:right;font-weight:700">${fmtBRL(r.total)}</td>
@@ -2420,6 +2435,41 @@ document.getElementById('manualCustName').addEventListener('change', () => {
   const match = cachedCustomers.find(c => (c.name || '').toLowerCase() === val)
   if (match && match.phone) document.getElementById('manualCustPhone').value = match.phone
 })
+
+function openOrderModal(idx) {
+  const o = detalheOrders[idx]
+  if (!o) return
+  document.getElementById('orderModalTitle').textContent =
+    `Pedido · ${fmtDate(o.createdAt)} às ${fmtTime(o.createdAt)}`
+  const items = o.items || []
+  document.getElementById('orderModalItems').innerHTML = items.map(it => `
+    <div class="order-modal-item">
+      <span class="order-modal-item-qty">${it.qty}×</span>
+      <span class="order-modal-item-name">${it.name}</span>
+      <span class="order-modal-item-price">${fmtBRL(it.price * it.qty)}</span>
+    </div>`).join('')
+  document.getElementById('orderModalTotal').textContent = fmtBRL(o.total || 0)
+  document.getElementById('orderModal').style.display = 'flex'
+}
+function closeOrderModal() {
+  document.getElementById('orderModal').style.display = 'none'
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOrderModal() })
 </script>
+
+<div id="orderModal" class="order-modal-overlay" style="display:none"
+     onclick="if(event.target===this)closeOrderModal()">
+  <div class="order-modal">
+    <div class="order-modal-header">
+      <div class="order-modal-title" id="orderModalTitle"></div>
+      <button class="order-modal-close" onclick="closeOrderModal()">✕</button>
+    </div>
+    <div id="orderModalItems"></div>
+    <div class="order-modal-total">
+      <span>Total</span>
+      <span id="orderModalTotal"></span>
+    </div>
+  </div>
+</div>
 </body>
 </html>
