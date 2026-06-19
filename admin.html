@@ -590,6 +590,7 @@ input[type="number"]{-moz-appearance:textfield}
       <button class="tab-btn" data-tab="detalhe">Vendas</button>
       <button class="tab-btn" data-tab="crm">CRM</button>
       <button class="tab-btn" data-tab="artigos">Catálogo</button>
+      <button class="tab-btn" data-tab="insumos">Insumos</button>
       <button class="tab-btn" data-tab="financas">Finanças</button>
     </nav>
     <button id="logoutBtn">Sair</button>
@@ -752,6 +753,47 @@ input[type="number"]{-moz-appearance:textfield}
       <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
         <button class="art-btn art-btn-primary" id="artSaveBtn">Salvar alterações</button>
         <span class="fin-saved-msg" id="artSavedMsg">✓ Salvo</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- INSUMOS -->
+  <div class="tab-content" id="tab-insumos" style="display:none">
+    <div class="fin-config-card">
+      <div class="fin-config-title">Catálogo de Insumos</div>
+      <div class="fin-config-sub">Matéria-prima usada nas fichas técnicas dos pratos: proteínas, vegetais, embalagens e molhos. Alimenta o módulo de Consumos para controle e previsão de compras.</div>
+
+      <div class="art-toolbar">
+        <input type="text" id="insNewName" placeholder="Nome do insumo…">
+        <select id="insNewType" class="art-inp" style="width:140px">
+          <option value="proteína">Proteína</option>
+          <option value="vegetal">Vegetal</option>
+          <option value="empaque">Embalagem</option>
+          <option value="molho">Molho / Óleo</option>
+        </select>
+        <select id="insNewUnit" class="art-inp" style="width:110px">
+          <option value="g">g (gramas)</option>
+          <option value="ml">ml</option>
+          <option value="unidad">unidade</option>
+        </select>
+        <button class="art-btn art-btn-primary" onclick="addInsumoRow()">+ Criar</button>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table class="art-table">
+          <thead><tr>
+            <th>Nome</th>
+            <th>Tipo</th>
+            <th>Unidade</th>
+            <th style="text-align:center">Status</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="insTableBody"><tr><td colspan="5" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
+        <button class="art-btn art-btn-primary" id="insSaveBtn" onclick="saveInsumos()">Salvar alterações</button>
+        <span class="fin-saved-msg" id="insSavedMsg">✓ Salvo</span>
       </div>
     </div>
   </div>
@@ -992,6 +1034,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-' + tab).style.display = 'block'
     if (tab === 'crm') loadCRM()
     if (tab === 'artigos') initArtigos()
+    if (tab === 'insumos') initInsumos()
     if (tab === 'financas') initFinancas()
     if (tab === 'manual') initManual()
     if (tab === 'detalhe') {
@@ -2306,6 +2349,159 @@ async function initArtigos() {
   } catch (e) {
     console.error('Artigos load error:', e)
     body.innerHTML = `<tr><td colspan="6" style="color:#F44336;padding:20px;text-align:center">Erro ao carregar: ${e.message}</td></tr>`
+  }
+}
+
+// ── INSUMOS ──
+const INSUMOS_DEFAULTS = [
+  { name: 'Frango filé',        type: 'proteína', unit: 'g',      active: true },
+  { name: 'Carne coxa moída',   type: 'proteína', unit: 'g',      active: true },
+  { name: 'Porco lombo suíno',  type: 'proteína', unit: 'g',      active: true },
+  { name: 'Cebola branca',      type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Cenoura',            type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Pimentão verde',     type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Pimentão vermelho',  type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Cebolinha verde',    type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Repolho roxo',       type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Ovo',                type: 'vegetal',  unit: 'unidad', active: true },
+  { name: 'Shiitake',           type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Brócolis',           type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Gergelim bicolor',   type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Arroz',              type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Macarrão',           type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Box antivazamento',  type: 'empaque',  unit: 'unidad', active: true },
+  { name: 'Bolsa de papel',     type: 'empaque',  unit: 'unidad', active: true },
+]
+const INS_TYPE_LABELS = { proteína: 'Proteína', vegetal: 'Vegetal', empaque: 'Embalagem', molho: 'Molho/Óleo' }
+const INS_TYPE_ORDER  = ['proteína', 'vegetal', 'empaque', 'molho']
+
+let insumosBuffer   = {}
+let insumosSnapshot = {}
+
+async function loadInsumos() {
+  const snap = await db.collection('insumos').get()
+  if (snap.empty) {
+    const batch = db.batch()
+    INSUMOS_DEFAULTS.forEach(ins => {
+      const ref = db.collection('insumos').doc()
+      batch.set(ref, { ...ins, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+    })
+    await batch.commit()
+    return loadInsumos()
+  }
+  insumosSnapshot = {}
+  snap.docs.forEach(d => { insumosSnapshot[d.id] = { id: d.id, ...d.data() } })
+  insumosBuffer = {}
+  return Object.values(insumosSnapshot)
+}
+
+function mergeInsumos() {
+  const map = { ...insumosSnapshot }
+  Object.entries(insumosBuffer).forEach(([id, data]) => { map[id] = { id, ...data } })
+  return Object.values(map).sort((a, b) => {
+    const ti = INS_TYPE_ORDER.indexOf(a.type) - INS_TYPE_ORDER.indexOf(b.type)
+    return ti !== 0 ? ti : (a.name || '').localeCompare(b.name || '')
+  })
+}
+
+function renderInsTable() {
+  const items = mergeInsumos()
+  const body  = document.getElementById('insTableBody')
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="5" style="color:#555;padding:24px;text-align:center">Nenhum insumo cadastrado.</td></tr>'
+    return
+  }
+  body.innerHTML = items.map(it => {
+    const typeOpts = Object.entries(INS_TYPE_LABELS).map(([k, v]) =>
+      `<option value="${k}" ${it.type === k ? 'selected' : ''}>${v}</option>`).join('')
+    const unitOpts = [['g','g'],['ml','ml'],['unidad','unidade']].map(([val, lbl]) =>
+      `<option value="${val}" ${it.unit === val ? 'selected' : ''}>${lbl}</option>`).join('')
+    const activeClass = it.active === false ? 'art-inactive' : ''
+    const toggleLabel = it.active === false ? 'Inativo' : 'Ativo'
+    const toggleClass = it.active === false ? '' : 'active'
+    const safeId = it.id.replace(/'/g, "\\'")
+    return `<tr class="${activeClass}" data-id="${it.id}">
+      <td style="min-width:200px"><input class="art-inp ins-inp" data-field="name" data-id="${it.id}" value="${(it.name||'').replace(/"/g,'&quot;')}"></td>
+      <td><select class="art-inp ins-inp" data-field="type" data-id="${it.id}">${typeOpts}</select></td>
+      <td><select class="art-inp ins-inp" data-field="unit" data-id="${it.id}">${unitOpts}</select></td>
+      <td style="text-align:center">
+        <button class="art-status-toggle ${toggleClass}" onclick="toggleInsumoActive('${safeId}')">${toggleLabel}</button>
+      </td>
+      <td>
+        <button class="art-btn art-btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteInsumo('${safeId}')">✕</button>
+      </td>
+    </tr>`
+  }).join('')
+
+  body.querySelectorAll('.ins-inp[data-field]').forEach(el => {
+    el.addEventListener('change', e => {
+      const id    = e.target.dataset.id
+      const field = e.target.dataset.field
+      const cur   = insumosBuffer[id] || { ...(insumosSnapshot[id] || {}) }
+      insumosBuffer[id] = { ...cur, [field]: e.target.value }
+    })
+  })
+}
+
+function toggleInsumoActive(id) {
+  const cur       = insumosBuffer[id] || { ...(insumosSnapshot[id] || {}) }
+  const nowActive = cur.active === false
+  insumosBuffer[id] = { ...cur, active: nowActive }
+  renderInsTable()
+}
+
+async function deleteInsumo(id) {
+  if (!confirm('Eliminar este insumo?')) return
+  try {
+    if (!id.startsWith('__new__')) await db.collection('insumos').doc(id).delete()
+    delete insumosSnapshot[id]
+    delete insumosBuffer[id]
+    renderInsTable()
+  } catch (e) { alert('Erro ao eliminar: ' + e.message) }
+}
+
+async function saveInsumos() {
+  const btn = document.getElementById('insSaveBtn')
+  btn.disabled = true; btn.textContent = 'Salvando…'
+  try {
+    const batch = db.batch()
+    for (const [id, data] of Object.entries(insumosBuffer)) {
+      const { id: _id, ...fields } = data
+      if (id.startsWith('__new__')) {
+        const ref = db.collection('insumos').doc()
+        batch.set(ref, { ...fields, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+      } else {
+        batch.update(db.collection('insumos').doc(id), fields)
+      }
+    }
+    await batch.commit()
+    const msg = document.getElementById('insSavedMsg')
+    msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500)
+    await initInsumos()
+  } catch (e) { alert('Erro ao salvar: ' + e.message) }
+  finally { btn.disabled = false; btn.textContent = 'Salvar alterações' }
+}
+
+function addInsumoRow() {
+  const name = document.getElementById('insNewName').value.trim()
+  if (!name) { document.getElementById('insNewName').focus(); return }
+  const type  = document.getElementById('insNewType').value
+  const unit  = document.getElementById('insNewUnit').value
+  const tmpId = '__new__' + Date.now()
+  insumosBuffer[tmpId] = { name, type, unit, active: true }
+  document.getElementById('insNewName').value = ''
+  renderInsTable()
+}
+
+async function initInsumos() {
+  const body = document.getElementById('insTableBody')
+  body.innerHTML = '<tr><td colspan="5" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr>'
+  try {
+    await loadInsumos()
+    renderInsTable()
+  } catch (e) {
+    console.error('Insumos load error:', e)
+    body.innerHTML = `<tr><td colspan="5" style="color:#F44336;padding:20px;text-align:center">Erro ao carregar: ${e.message}</td></tr>`
   }
 }
 
