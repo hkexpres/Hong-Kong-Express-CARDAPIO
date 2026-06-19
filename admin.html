@@ -1425,31 +1425,81 @@ async function loadDetalhe() {
       else statusCount.outros++
     })
     detalheOrders = allInRange.filter(o => o.status === 'confirmed')
-    renderDetalhe(detalheOrders, statusCount)
+    const nonConfirmed = allInRange.filter(o => o.status !== 'confirmed')
+    renderDetalhe(detalheOrders, statusCount, nonConfirmed)
   } catch(e) {
     el.innerHTML = `<div class="empty-state">Erro ao carregar: ${e.message}</div>`
     console.error(e)
   }
 }
 
-function statusBanner(sc) {
-  if (!sc) return ''
+function statusBanner(sc, nonConfirmed) {
   const extra = (sc.pending || 0) + (sc.cancelled || 0) + (sc.outros || 0)
   if (!extra) return ''
   const parts = []
-  if (sc.pending)   parts.push(`${sc.pending} pendente${sc.pending > 1 ? 's' : ''}`)
-  if (sc.cancelled) parts.push(`${sc.cancelled} cancelado${sc.cancelled > 1 ? 's' : ''}`)
+  if (sc.pending)   parts.push(`<strong style="color:var(--yellow)">${sc.pending} pendente${sc.pending > 1 ? 's' : ''}</strong>`)
+  if (sc.cancelled) parts.push(`<strong style="color:#F44336">${sc.cancelled} cancelado${sc.cancelled > 1 ? 's' : ''}</strong>`)
   if (sc.outros)    parts.push(`${sc.outros} sem status`)
-  return `<div style="background:rgba(240,232,112,0.06);border:1px solid rgba(240,232,112,0.2);
-    border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--gray)">
-    ℹ️ ${sc.confirmed} confirmado${sc.confirmed === 1 ? '' : 's'} exibido${sc.confirmed === 1 ? '' : 's'}.
-    No período também há: ${parts.join(' · ')} (não contam na receita).</div>`
+
+  const rows = (nonConfirmed || []).map(o => {
+    const isPending   = o.status === 'pending'
+    const isCancelled = o.status === 'cancelled'
+    const statusLabel = isPending ? '<span style="color:var(--yellow)">● PENDENTE</span>'
+                      : isCancelled ? '<span style="color:#F44336">● CANCELADO</span>'
+                      : `<span style="color:#888">${o.status}</span>`
+    const total = fmtBRL(o.total || (o.items||[]).reduce((a,it)=>a+it.qty*it.price,0))
+    const actions = isPending ? `
+      <button onclick="vendaStatusUpdate('${o.id}','confirmed')" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;margin-left:6px">✔ Confirmar</button>
+      <button onclick="vendaStatusUpdate('${o.id}','cancelled')" style="background:#b71c1c;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;margin-left:4px">✕ Cancelar</button>` : ''
+    const itemList = (o.items||[]).map(it=>`${it.qty}× ${it.name}`).join(', ')
+    return `<tr id="vrow-${o.id}">
+      <td style="color:#aaa;font-size:12px;padding:7px 8px;white-space:nowrap">${fmtDate(o.createdAt)} ${fmtTime(o.createdAt)}</td>
+      <td style="font-size:12px;padding:7px 8px;color:#ccc">${itemList}</td>
+      <td style="padding:7px 8px;white-space:nowrap;font-size:12px">${total}</td>
+      <td style="padding:7px 8px;white-space:nowrap">${statusLabel}${actions}</td>
+    </tr>`
+  }).join('')
+
+  return `<div style="background:rgba(240,232,112,0.05);border:1px solid rgba(240,232,112,0.18);
+      border-radius:10px;margin-bottom:14px;overflow:hidden">
+    <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';
+                  this.querySelector('.ban-arrow').textContent=this.nextElementSibling.style.display==='none'?'▶':'▼'"
+         style="padding:10px 14px;cursor:pointer;font-size:12px;color:var(--gray);display:flex;align-items:center;gap:8px">
+      <span class="ban-arrow">▶</span>
+      ℹ️ ${sc.confirmed} confirmado${sc.confirmed===1?'':'s'} exibido${sc.confirmed===1?'':'s'}.
+      No período também há: ${parts.join(' · ')} — <em>clique para ver e gerenciar</em>
+    </div>
+    <div style="display:none;border-top:1px solid rgba(255,255,255,0.07)">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="font-size:11px;color:#555">
+          <th style="padding:5px 8px;text-align:left">Data/Hora</th>
+          <th style="padding:5px 8px;text-align:left">Itens</th>
+          <th style="padding:5px 8px;text-align:left">Total</th>
+          <th style="padding:5px 8px;text-align:left">Status</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`
 }
 
-function renderDetalhe(orders, statusCount) {
+async function vendaStatusUpdate(id, newStatus) {
+  const row = document.getElementById('vrow-' + id)
+  if (row) row.style.opacity = '0.4'
+  try {
+    await db.collection('orders').doc(id).update({ status: newStatus })
+    // reload vendas to reflect change
+    loadDetalhe()
+  } catch(e) {
+    if (row) row.style.opacity = '1'
+    alert('Erro ao atualizar status: ' + e.message)
+  }
+}
+
+function renderDetalhe(orders, statusCount, nonConfirmed) {
   const el = document.getElementById('detalheContent')
   if (!orders.length) {
-    el.innerHTML = statusBanner(statusCount) +
+    el.innerHTML = statusBanner(statusCount || {confirmed:0}, nonConfirmed || []) +
       '<div class="empty-state">Nenhum pedido confirmado no período.</div>'
     detalheSummaryData = []
     return
@@ -1536,7 +1586,7 @@ function renderDetalhe(orders, statusCount) {
   const gHeaders = ITEM_GROUPS.map(g => `<th style="text-align:right">${g.label}</th>`).join('')
 
   el.innerHTML = `
-    ${statusBanner(statusCount)}
+    ${statusBanner(statusCount || {confirmed: orders.length}, nonConfirmed || [])}
     <div class="detalhe-table-wrap">
       <table>
         <thead><tr>
