@@ -769,6 +769,7 @@ input[type="number"]{-moz-appearance:textfield}
         <select id="insNewType" class="art-inp" style="width:140px">
           <option value="proteína">Proteína</option>
           <option value="vegetal">Vegetal</option>
+          <option value="carbohidrato">Carboidrato</option>
           <option value="empaque">Embalagem</option>
           <option value="molho">Molho / Óleo</option>
         </select>
@@ -822,7 +823,7 @@ input[type="number"]{-moz-appearance:textfield}
         <span id="fichaInsUnit" style="color:#aaa;align-self:center;min-width:30px"></span>
         <button class="art-btn art-btn-primary" onclick="addFichaLine()">+ Adicionar</button>
         <button class="art-btn" onclick="autoFillProtein()" title="Preencher proteína (240g, ou 165g em Chow Fan/Mein)">⚡ Proteína</button>
-        <button class="art-btn" onclick="autoFillPackaging()" title="Adicionar 1 box + 1 bolsa">📦 Embalagem</button>
+        <button class="art-btn" onclick="autoFillPackaging()" title="Adicionar 1 box + 1 palito (a bolsa é por pedido, não por prato)">📦 Embalagem</button>
       </div>
       <div style="overflow-x:auto">
         <table class="art-table">
@@ -2412,19 +2413,20 @@ const INSUMOS_DEFAULTS = [
   { name: 'Shiitake',           type: 'vegetal',  unit: 'g',      active: true },
   { name: 'Brócolis',           type: 'vegetal',  unit: 'g',      active: true },
   { name: 'Gergelim bicolor',   type: 'vegetal',  unit: 'g',      active: true },
-  { name: 'Arroz',              type: 'vegetal',  unit: 'g',      active: true },
-  { name: 'Macarrão',           type: 'vegetal',  unit: 'g',      active: true },
+  { name: 'Arroz',              type: 'carbohidrato', unit: 'g',  active: true },
+  { name: 'Macarrão',           type: 'carbohidrato', unit: 'g',  active: true },
   { name: 'Box antivazamento',  type: 'empaque',  unit: 'unidad', active: true },
   { name: 'Bolsa de papel',     type: 'empaque',  unit: 'unidad', active: true },
+  { name: 'Palitos de madeira', type: 'empaque',  unit: 'unidad', active: true },
 ]
-const INS_TYPE_LABELS = { proteína: 'Proteína', vegetal: 'Vegetal', empaque: 'Embalagem', molho: 'Molho/Óleo' }
-const INS_TYPE_ORDER  = ['proteína', 'vegetal', 'empaque', 'molho']
+const INS_TYPE_LABELS = { proteína: 'Proteína', vegetal: 'Vegetal', carbohidrato: 'Carboidrato', empaque: 'Embalagem', molho: 'Molho/Óleo' }
+const INS_TYPE_ORDER  = ['proteína', 'vegetal', 'carbohidrato', 'empaque', 'molho']
 
 let insumosBuffer   = {}
 let insumosSnapshot = {}
 
 async function loadInsumos() {
-  const snap = await db.collection('insumos').get()
+  let snap = await db.collection('insumos').get()
   if (snap.empty) {
     const batch = db.batch()
     INSUMOS_DEFAULTS.forEach(ins => {
@@ -2432,7 +2434,20 @@ async function loadInsumos() {
       batch.set(ref, { ...ins, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
     })
     await batch.commit()
-    return loadInsumos()
+    snap = await db.collection('insumos').get()
+  } else {
+    // Idempotent top-up: add any new default insumo missing by name (never overwrites existing).
+    const existingNames = new Set(snap.docs.map(d => (d.data().name || '').trim().toLowerCase()))
+    const missing = INSUMOS_DEFAULTS.filter(ins => !existingNames.has(ins.name.trim().toLowerCase()))
+    if (missing.length) {
+      const batch = db.batch()
+      missing.forEach(ins => {
+        const ref = db.collection('insumos').doc()
+        batch.set(ref, { ...ins, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+      })
+      await batch.commit()
+      snap = await db.collection('insumos').get()
+    }
   }
   insumosSnapshot = {}
   snap.docs.forEach(d => { insumosSnapshot[d.id] = { id: d.id, ...d.data() } })
@@ -2692,9 +2707,10 @@ function autoFillProtein() {
 }
 
 function autoFillPackaging() {
-  const okBox   = setFichaLine('Box antivazamento', 1)
-  const okBolsa = setFichaLine('Bolsa de papel', 1)
-  if (!okBox || !okBolsa) alert('Box ou Bolsa não encontrados nos Insumos.')
+  // Per-dish packaging only. The paper bag is per-order and is counted in Consumos, not here.
+  const okBox    = setFichaLine('Box antivazamento', 1)
+  const okPalito = setFichaLine('Palitos de madeira', 1)
+  if (!okBox || !okPalito) alert('Box ou Palitos não encontrados nos Insumos.')
   renderFichaLines()
 }
 
