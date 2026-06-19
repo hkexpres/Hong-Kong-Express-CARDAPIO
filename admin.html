@@ -372,6 +372,17 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   display:inline-block;margin-left:12px;font-size:12px;
   color:var(--green2);opacity:0;transition:opacity .3s;
 }
+.ficha-banner{
+  font-size:13px;padding:10px 14px;border-radius:8px;line-height:1.9;
+}
+.ficha-banner.ok{ background:rgba(76,175,80,.12); color:var(--green2); }
+.ficha-banner.warn{ background:rgba(255,193,7,.12); color:#FFC107; }
+.ficha-chip{
+  display:inline-block;margin:2px 4px;padding:3px 10px;font-size:12px;cursor:pointer;
+  background:rgba(255,193,7,.18);color:#FFD54F;border:1px solid rgba(255,193,7,.4);
+  border-radius:12px;transition:background .15s;
+}
+.ficha-chip:hover{ background:rgba(255,193,7,.35); }
 .fin-filters-row{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap}
 .fin-kpi-row{
   display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;
@@ -591,7 +602,7 @@ input[type="number"]{-moz-appearance:textfield}
       <button class="tab-btn" data-tab="crm">CRM</button>
       <button class="tab-btn" data-tab="artigos">Catálogo</button>
       <button class="tab-btn" data-tab="insumos">Insumos</button>
-      <button class="tab-btn" data-tab="fichas">Fichas</button>
+      <button class="tab-btn" data-tab="fichas">Fichas <span class="badge hidden" id="fichaBadge">0</span></button>
       <button class="tab-btn" data-tab="financas">Finanças</button>
     </nav>
     <button id="logoutBtn">Sair</button>
@@ -812,6 +823,7 @@ input[type="number"]{-moz-appearance:textfield}
           </select>
         </label>
       </div>
+      <div id="fichaMissingBanner" style="margin-top:12px"></div>
     </div>
 
     <div class="fin-config-card" id="fichaEditorCard" style="display:none">
@@ -1122,6 +1134,7 @@ function initAdmin() {
 
   loadDashboard()
   listenHoje()
+  refreshFichaBadge()
 
   // auto-refresh dashboard every 5 minutes
   if (dashboardRefreshInterval) clearInterval(dashboardRefreshInterval)
@@ -2597,6 +2610,56 @@ async function loadFichasData() {
 
 function insumoById(id) { return fichaInsumos.find(i => i.id === id) }
 
+function fichaMissingProducts() {
+  return fichaProducts.filter(p => !(fichaMap[p.id] && (fichaMap[p.id].lines || []).length))
+}
+
+function updateFichaBadge(count) {
+  const badge = document.getElementById('fichaBadge')
+  if (!badge) return
+  if (count > 0) { badge.textContent = count; badge.classList.remove('hidden') }
+  else badge.classList.add('hidden')
+}
+
+function renderFichaMissingBanner() {
+  const el = document.getElementById('fichaMissingBanner')
+  if (!el) return
+  const missing = fichaMissingProducts()
+  updateFichaBadge(missing.length)
+  if (!missing.length) {
+    el.innerHTML = '<div class="ficha-banner ok">✓ Todos os pratos do catálogo já têm ficha técnica.</div>'
+    return
+  }
+  el.innerHTML = `<div class="ficha-banner warn">⚠ ${missing.length} prato(s) sem ficha técnica — clique para carregar:<br>` +
+    missing.map(p => `<span class="ficha-chip" onclick="selectFichaProduct('${p.id.replace(/'/g, "\\'")}')">${(p.name || '').replace(/</g, '&lt;')}</span>`).join('') +
+    '</div>'
+}
+
+function selectFichaProduct(id) {
+  const sel = document.getElementById('fichaProdSelect')
+  sel.value = id
+  onFichaProdChange()
+  const card = document.getElementById('fichaEditorCard')
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+// Lightweight badge refresh at startup (before the Fichas tab is opened).
+async function refreshFichaBadge() {
+  try {
+    const [prodSnap, recSnap] = await Promise.all([
+      db.collection('products').get(),
+      db.collection('recipes').get(),
+    ])
+    const withFicha = new Set()
+    recSnap.docs.forEach(d => { if ((d.data().lines || []).length) withFicha.add(d.id) })
+    const missing = prodSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(p => ['pratos', 'acomp'].includes(p.category) && p.active !== false && !withFicha.has(p.id))
+      .length
+    updateFichaBadge(missing)
+  } catch (e) { /* silent — badge is best-effort */ }
+}
+
 function renderFichaProdSelect() {
   const sel = document.getElementById('fichaProdSelect')
   sel.innerHTML = '<option value="">— Selecione um prato —</option>' +
@@ -2727,6 +2790,7 @@ async function saveFicha() {
     })
     fichaMap[fichaCurrentId] = { productName: prod ? prod.name : '', lines }
     renderFichaProdSelect()
+    renderFichaMissingBanner()
     document.getElementById('fichaProdSelect').value = fichaCurrentId
     const msg = document.getElementById('fichaSavedMsg')
     msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500)
@@ -2740,6 +2804,7 @@ async function initFichas() {
     await loadFichasData()
     renderFichaProdSelect()
     renderFichaInsSelect()
+    renderFichaMissingBanner()
     document.getElementById('fichaEditorCard').style.display = 'none'
     sel.onchange = onFichaProdChange
     document.getElementById('fichaInsSelect').onchange = updateFichaUnitHint
