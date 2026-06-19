@@ -981,7 +981,16 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'artigos') initArtigos()
     if (tab === 'financas') initFinancas()
     if (tab === 'manual') initManual()
-    if (tab === 'detalhe') loadDetalhe()
+    if (tab === 'detalhe') {
+      // always refresh filterTo to today so recent sales are included
+      const now = new Date()
+      document.getElementById('filterTo').value = now.toISOString().split('T')[0]
+      if (!document.getElementById('filterFrom').value) {
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+        document.getElementById('filterFrom').value = firstDay.toISOString().split('T')[0]
+      }
+      loadDetalhe()
+    }
   })
 })
 
