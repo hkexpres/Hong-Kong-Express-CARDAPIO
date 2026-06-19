@@ -2546,8 +2546,12 @@ document.getElementById('manualCustName').addEventListener('change', () => {
 function openOrderModal(idx) {
   const o = detalheOrders[idx]
   if (!o) return
-  document.getElementById('orderModalTitle').textContent =
-    `Pedido · ${fmtDate(o.createdAt)} às ${fmtTime(o.createdAt)}`
+  const statusTag = o.status === 'confirmed' ? '<span style="color:#81C784">● Confirmado</span>'
+                  : o.status === 'cancelled' ? '<span style="color:#F44336">● Cancelado</span>'
+                  : o.status === 'pending'   ? '<span style="color:var(--yellow)">● Pendente</span>'
+                  : ''
+  document.getElementById('orderModalTitle').innerHTML =
+    `Pedido · ${fmtDate(o.createdAt)} às ${fmtTime(o.createdAt)} ${statusTag ? '· ' + statusTag : ''}`
   const items = o.items || []
   document.getElementById('orderModalItems').innerHTML = items.map(it => `
     <div class="order-modal-item">
@@ -2556,7 +2560,34 @@ function openOrderModal(idx) {
       <span class="order-modal-item-price">${fmtBRL(it.price * it.qty)}</span>
     </div>`).join('')
   document.getElementById('orderModalTotal').textContent = fmtBRL(o.total || 0)
+
+  // ações de status conforme estado atual
+  const act = document.getElementById('orderModalActions')
+  if (o.status === 'pending') {
+    act.innerHTML = `<div style="display:flex;gap:8px">
+      <button onclick="modalStatusUpdate('${o.id}','confirmed')" style="flex:1;background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer">✔ Confirmar</button>
+      <button onclick="modalStatusUpdate('${o.id}','cancelled')" style="flex:1;background:#b71c1c;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer">✕ Cancelar</button>
+    </div>`
+  } else if (o.status === 'confirmed') {
+    act.innerHTML = `<button onclick="modalStatusUpdate('${o.id}','cancelled')" style="width:100%;background:none;border:1px solid #b71c1c;color:#F44336;border-radius:8px;padding:9px;font-size:12px;cursor:pointer">✕ Cancelar pedido</button>`
+  } else if (o.status === 'cancelled') {
+    act.innerHTML = `<button onclick="modalStatusUpdate('${o.id}','confirmed')" style="width:100%;background:none;border:1px solid #2e7d32;color:#81C784;border-radius:8px;padding:9px;font-size:12px;cursor:pointer">✔ Reativar como confirmado</button>`
+  } else {
+    act.innerHTML = ''
+  }
   document.getElementById('orderModal').style.display = 'flex'
+}
+
+async function modalStatusUpdate(id, newStatus) {
+  const act = document.getElementById('orderModalActions')
+  act.innerHTML = '<div style="text-align:center;color:#888;font-size:13px">Atualizando…</div>'
+  try {
+    await db.collection('orders').doc(id).update({ status: newStatus })
+    closeOrderModal()
+    loadDetalhe()
+  } catch(e) {
+    alert('Erro ao atualizar status: ' + e.message)
+  }
 }
 function closeOrderModal() {
   document.getElementById('orderModal').style.display = 'none'
@@ -2576,6 +2607,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOrderMo
       <span>Total</span>
       <span id="orderModalTotal"></span>
     </div>
+    <div id="orderModalActions" style="margin-top:16px"></div>
   </div>
 </div>
 </body>
