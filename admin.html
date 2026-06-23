@@ -2759,13 +2759,32 @@ function setFichaLine(insName, qty) {
 function autoFillProtein() {
   const prod = fichaProducts.find(p => p.id === fichaCurrentId)
   if (!prod) return
-  const n = (prod.name || '').toLowerCase()
-  let protein
-  if (n.includes('porco') || n.includes('suíno') || n.includes('suino') || n.includes('lombo')) protein = 'Porco lombo suíno'
-  else if (n.includes('carne') || n.includes('boi') || n.includes('res') || n.includes('coxa')) protein = 'Carne coxa moída'
-  else protein = 'Frango filé'
-  const qty = (n.includes('chow') || n.includes('mein') || n.includes('fan')) ? 165 : 240
-  if (!setFichaLine(protein, qty)) { alert('Proteína "' + protein + '" não encontrada nos Insumos.'); return }
+  const n   = (prod.name || '').toLowerCase()
+  const sku = (prod.sku  || '').toUpperCase()
+
+  const isChowFanMein = n.includes('chow') || n.includes('mein') || n.includes('fan')
+  const isMisto       = n.includes('misto') || sku.includes('MST')
+
+  const isPorco  = n.includes('porco') || n.includes('suíno') || n.includes('suino') || n.includes('lombo')
+  const isCarne  = n.includes('carne') || n.includes('boi')   || n.includes('res')   || n.includes('coxa')
+
+  let errors = []
+
+  if (isMisto) {
+    // Mixed proteins — always 50/50 split
+    // AGP-MST and porco variants → frango + porco; everything else → frango + carne
+    const half   = isChowFanMein ? 80 : 120
+    const second = isPorco ? 'Porco lombo suíno' : 'Carne coxa moída'
+    if (!setFichaLine('Frango filé', half)) errors.push('Frango filé')
+    if (!setFichaLine(second,        half)) errors.push(second)
+  } else {
+    // Single protein
+    const protein = isPorco ? 'Porco lombo suíno' : isCarne ? 'Carne coxa moída' : 'Frango filé'
+    const qty     = isChowFanMein ? 160 : 240
+    if (!setFichaLine(protein, qty)) errors.push(protein)
+  }
+
+  if (errors.length) { alert('Proteína não encontrada nos Insumos: ' + errors.join(', ')); return }
   renderFichaLines()
 }
 
