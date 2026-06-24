@@ -2203,7 +2203,7 @@ function calcOrderFinance(order, prodBySku, prodByName, fichaByProdId, insumoMap
       })
     } else {
       // Fallback: product.cost from catalog (bebidas, molhos, items without ficha)
-      const prod = (it.sku && prodBySku[it.sku]) || prodByName[(it.name || '').toLowerCase().trim()]
+      const prod = findProduct(it, prodBySku, prodByName)
       if (prod && prod.cost) c = it.qty * prod.cost
     }
     custo += c
@@ -3563,10 +3563,21 @@ async function loadConsumos() {
   }
 }
 
+// Match an order item to a catalog product.
+// Order of preference: item.sku → product name → SKU written in the name field.
+function findProduct(item, prodBySku, prodByName) {
+  if (item.sku && prodBySku[item.sku]) return prodBySku[item.sku]
+  const nameKey = (item.name || '').toLowerCase().trim()
+  if (prodByName[nameKey]) return prodByName[nameKey]
+  // Allow typing the SKU code in the item name (e.g. "CF-FRG") to force a match
+  const skuKey = (item.name || '').trim().toUpperCase()
+  if (prodBySku[skuKey]) return prodBySku[skuKey]
+  return null
+}
+
 // Resolve an order item → [{insumoId, qty}] via fichas técnicas
 function consResolveLines(item, prodBySku, prodByName, fichaByProdId) {
-  const prod = (item.sku && prodBySku[item.sku])
-    || prodByName[(item.name || '').toLowerCase().trim()]
+  const prod = findProduct(item, prodBySku, prodByName)
   if (!prod) return []
 
   if (prod.category === 'combos' && prod.components) {
