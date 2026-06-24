@@ -3563,13 +3563,59 @@ async function loadConsumos() {
   }
 }
 
+// iFood sends item names in "DISH · Variation" format with uppercase + accents that
+// differ from catalog names. This map resolves them to SKUs automatically.
+const IFOOD_SKU_MAP = {
+  // Chao Fan
+  'chow fan · frango':'CF-FRG',  'chao fan · frango':'CF-FRG',
+  'chow fan · cerdo':'CF-PRC',   'chao fan · cerdo':'CF-PRC',
+  'chow fan · carne':'CF-CRN',   'chao fan · carne':'CF-CRN',
+  'chow fan · misto':'CF-MST',   'chao fan · misto':'CF-MST',
+  // Chao Mein
+  'chow mein · frango':'CM-FRG', 'chao mein · frango':'CM-FRG',
+  'chow mein · cerdo':'CM-PRC',  'chao mein · cerdo':'CM-PRC',
+  'chow mein · carne':'CM-CRN',  'chao mein · carne':'CM-CRN',
+  'chow mein · misto':'CM-MST',  'chao mein · misto':'CM-MST',
+  // Chop Suey
+  'chop suey · com macarrão de sêmola':'CS-SEM', 'chop suey · macarrão':'CS-SEM',
+  'chop suey · com arroz tostado':'CS-ARZ',       'chop suey · arroz':'CS-ARZ',
+  // Shitake Agridoce
+  'shiitake agridoce · com macarrão de sêmola':'SK-SEM', 'shitake agridoce · com macarrão de sêmola':'SK-SEM',
+  'shiitake agridoce · com arroz tostado':'SK-ARZ',       'shitake agridoce · com arroz tostado':'SK-ARZ',
+  // Carne Teriyaki
+  'carne teriyaki · carne':'TRY-CRN', 'carne teriyaki':'TRY-CRN',
+  // Agripicante
+  'agripicante · frango':'AGP-FRG', 'agripicante · cerdo':'AGP-PRC', 'agripicante · misto':'AGP-MST',
+  // Kung Pao
+  'kung pao · frango':'KP-FRG', 'kung pao · carne':'KP-CRN', 'kung pao · misto':'KP-MST',
+  // Gyoza (iFood appends "unidades")
+  'gyoza x1':'GYZ-1', 'gyoza x1 unidades':'GYZ-1',
+  'gyoza x5':'GYZ-5', 'gyoza x5 unidades':'GYZ-5',
+  'gyoza x8':'GYZ-8', 'gyoza x8 unidades':'GYZ-8',
+  // Molhos em garrafa
+  'molho agridoce 30ml':'SAL-AGRID',      'molho agridoce (30ml)':'SAL-AGRID',
+  'molho teriyaki 30ml':'SAL-TERI',       'molho teriyaki (30ml)':'SAL-TERI',
+  'molho agripicante 30ml':'SAL-AGRI',    'molho agripicante (30ml)':'SAL-AGRI',
+  'molho soja hinomoto 30ml':'SAL-HINO',  'molho soja hinomoto (30ml)':'SAL-HINO',
+  'molho kung pao 30ml':'SAL-KPAO',       'molho kung pao (30ml)':'SAL-KPAO',
+  // Combos (iFood usa nomes dos componentes ≠ nome no catálogo)
+  'chow fan frango + agripicante misto + gyoza x5':'CMB-DRG',
+  'carne teriyaki + gyoza x8':'CMB-PRM',  'carne teriyaki + 8 gyoza':'CMB-PRM',
+  'chow fan cerdo + chow mein frango':'CMB-DUO',
+  'kung pao frango + chop suey':'CMB-VRD',
+  'kung pao frango + carne teriyaki + chow fan cerdo':'CMB-HK',
+}
+
 // Match an order item to a catalog product.
-// Order of preference: item.sku → product name → SKU written in the name field.
+// Order of preference: item.sku → product name → iFood name map → SKU in name field.
 function findProduct(item, prodBySku, prodByName) {
   if (item.sku && prodBySku[item.sku]) return prodBySku[item.sku]
   const nameKey = (item.name || '').toLowerCase().trim()
   if (prodByName[nameKey]) return prodByName[nameKey]
-  // Allow typing the SKU code in the item name (e.g. "CF-FRG") to force a match
+  // iFood name format: automatic mapping
+  const ifoodSku = IFOOD_SKU_MAP[nameKey]
+  if (ifoodSku && prodBySku[ifoodSku]) return prodBySku[ifoodSku]
+  // Manual override: type SKU code in the name field (e.g. "CF-FRG")
   const skuKey = (item.name || '').trim().toUpperCase()
   if (prodBySku[skuKey]) return prodBySku[skuKey]
   return null
