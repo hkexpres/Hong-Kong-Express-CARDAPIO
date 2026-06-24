@@ -2189,18 +2189,34 @@ async function loadFinancas() {
 
 function calcOrderFinance(order, prodBySku, prodByName, fichaByProdId, insumoMap) {
   let receita = 0, custo = 0
+  const items = []
   ;(order.items || []).forEach(it => {
-    receita += it.qty * it.price
-    consResolveLines(it, prodBySku, prodByName, fichaByProdId).forEach(({ insumoId, qty }) => {
-      const ins = insumoMap[insumoId]
-      if (ins) custo += qty * (ins.costPerUnit || 0)
-    })
+    const r = it.qty * it.price
+    receita += r
+    let c = 0, hasFicha = false
+    const lines = consResolveLines(it, prodBySku, prodByName, fichaByProdId)
+    if (lines.length > 0) {
+      hasFicha = true
+      lines.forEach(({ insumoId, qty }) => {
+        const ins = insumoMap[insumoId]
+        if (ins) c += qty * (ins.costPerUnit || 0)
+      })
+    } else {
+      // Fallback: product.cost from catalog (bebidas, molhos, items without ficha)
+      const prod = (it.sku && prodBySku[it.sku]) || prodByName[(it.name || '').toLowerCase().trim()]
+      if (prod && prod.cost) c = it.qty * prod.cost
+    }
+    custo += c
+    items.push({ name: it.name, qty: it.qty, price: it.price, receita: r, custo: c,
+                 lucro: r - c, margem: r > 0 ? (r - c) / r * 100 : 0, hasFicha })
   })
   // Per-order insumos (bolsa de papel etc.): 1× per order
+  let perOrderCost = 0
   Object.values(insumoMap).forEach(ins => {
-    if (ins.perOrder) custo += ins.costPerUnit || 0
+    if (ins.perOrder) perOrderCost += ins.costPerUnit || 0
   })
-  return { receita, custo, lucro: receita - custo, margem: receita > 0 ? (receita - custo) / receita * 100 : 0 }
+  custo += perOrderCost
+  return { receita, custo, lucro: receita - custo, margem: receita > 0 ? (receita - custo) / receita * 100 : 0, items, perOrderCost }
 }
 
 function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap) {
@@ -2212,6 +2228,7 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   }
 
   const rows = orders.map(o => ({ ...o, fin: calcOrderFinance(o, prodBySku, prodByName, fichaByProdId, insumoMap) }))
+  window._finRows = Object.fromEntries(rows.map(r => [r.id, r]))
 
   const totReceita = rows.reduce((a, r) => a + r.fin.receita, 0)
   const totCusto   = rows.reduce((a, r) => a + r.fin.custo, 0)
@@ -2221,18 +2238,13 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   // ── Category breakdown via fichas técnicas ──
   const catData = {}
   ITEM_GROUPS.forEach(g => { catData[g.key] = { label: g.label, qty: 0, receita: 0, custo: 0 } })
-  orders.forEach(o => {
-    ;(o.items || []).forEach(it => {
+  rows.forEach(r => {
+    r.fin.items.forEach(it => {
       const cat = getItemCat(it.name)
       if (!catData[cat]) return
       catData[cat].qty     += it.qty
-      catData[cat].receita += it.qty * it.price
-      let itemCusto = 0
-      consResolveLines(it, prodBySku, prodByName, fichaByProdId).forEach(({ insumoId, qty }) => {
-        const ins = insumoMap[insumoId]
-        if (ins) itemCusto += qty * (ins.costPerUnit || 0)
-      })
-      catData[cat].custo += itemCusto
+      catData[cat].receita += it.receita
+      catData[cat].custo   += it.custo
     })
   })
 
@@ -2275,7 +2287,7 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   Object.entries(byDate).sort(([a],[b]) => b.localeCompare(a)).forEach(([key, dayRows]) => {
     const date = fmtDate(dayRows[0].createdAt)
     dayRows.forEach(r => {
-      orderRows += `<tr>
+      orderRows += `<tr style="cursor:pointer" title="Duplo clique para detalhes" ondblclick="openFinModal('${r.id}')">
         <td>${date}</td><td>${fmtTime(r.createdAt)}</td>
         <td>${fmtBRL(r.fin.receita)}</td>
         <td style="color:#aaa">${fmtBRL(r.fin.custo)}</td>
@@ -2778,7 +2790,7 @@ async function loadErpData() {
       const ref = existingId ? db.collection('products').doc(existingId) : db.collection('products').doc()
       prodIdBySku[p.sku] = ref.id
       idsUsed.add(ref.id)
-      prodOps.push(b => b.set(ref, { name: p.name, category: p.category, sku: p.sku, price: p.price, cost: p.cost, active: true }, { merge: true }))
+      prodOps.push(b => b.set(ref, { name: p.name, category: p.category, sku: p.sku, price: p.price, cost: p.cost, active: true, ...(p.components ? { components: p.components } : {}) }, { merge: true }))
     })
 
     // Delete orphan docs: no sku field AND name is in our canonical set (would be duplicates after above upsert)
@@ -3572,6 +3584,65 @@ function consResolveLines(item, prodBySku, prodByName, fichaByProdId) {
   return ficha.lines.map(l => ({ insumoId: l.insumoId, qty: l.qty * item.qty }))
 }
 
+// ── FINANÇAS ORDER DETAIL MODAL ──
+function openFinModal(orderId) {
+  const row = (window._finRows || {})[orderId]
+  if (!row) return
+  const el = document.getElementById('finModal')
+  const title = document.getElementById('finModalTitle')
+  const body  = document.getElementById('finModalBody')
+  if (!el || !title || !body) return
+
+  title.textContent = `Pedido · ${fmtDate(row.createdAt)} ${fmtTime(row.createdAt)}`
+
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="color:var(--gray);border-bottom:1px solid #333;font-size:11px">
+      <th style="text-align:left;padding:6px 6px">Item</th>
+      <th style="text-align:center;padding:6px 4px">Qtd</th>
+      <th style="text-align:right;padding:6px 4px">Receita</th>
+      <th style="text-align:right;padding:6px 4px">Custo</th>
+      <th style="text-align:right;padding:6px 4px">Lucro</th>
+      <th style="text-align:right;padding:6px 4px">Mgm</th>
+    </tr></thead><tbody>`
+
+  row.fin.items.forEach(it => {
+    const warn = !it.hasFicha && it.custo === 0 ? ' <span style="color:#F0C060;font-size:10px" title="Sem ficha técnica">⚠</span>' : ''
+    html += `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
+      <td style="padding:7px 6px;color:var(--white)">${it.name}${warn}</td>
+      <td style="text-align:center;padding:7px 4px;color:#888">${it.qty}</td>
+      <td style="text-align:right;padding:7px 4px">${fmtBRL(it.receita)}</td>
+      <td style="text-align:right;padding:7px 4px;color:#aaa">${fmtBRL(it.custo)}</td>
+      <td style="text-align:right;padding:7px 4px;color:${it.lucro>=0?'var(--green2)':'#F44336'}">${fmtBRL(it.lucro)}</td>
+      <td style="text-align:right;padding:7px 4px">${pctPill(it.margem)}</td>
+    </tr>`
+  })
+
+  if (row.fin.perOrderCost > 0) {
+    html += `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
+      <td style="padding:7px 6px;color:#888;font-size:12px">Embalagem delivery</td>
+      <td style="text-align:center;padding:7px 4px;color:#888">1</td>
+      <td style="text-align:right;padding:7px 4px;color:#666">—</td>
+      <td style="text-align:right;padding:7px 4px;color:#aaa">${fmtBRL(row.fin.perOrderCost)}</td>
+      <td colspan="2"></td>
+    </tr>`
+  }
+
+  html += `<tr style="border-top:2px solid #444;background:rgba(255,255,255,.03)">
+    <td colspan="2" style="padding:9px 6px;font-weight:700">Total</td>
+    <td style="text-align:right;padding:9px 4px;font-weight:700">${fmtBRL(row.fin.receita)}</td>
+    <td style="text-align:right;padding:9px 4px;font-weight:700;color:#aaa">${fmtBRL(row.fin.custo)}</td>
+    <td style="text-align:right;padding:9px 4px;font-weight:700;color:${row.fin.lucro>=0?'var(--green2)':'#F44336'}">${fmtBRL(row.fin.lucro)}</td>
+    <td style="text-align:right;padding:9px 4px;font-weight:700">${pctPill(row.fin.margem)}</td>
+  </tr></tbody></table>`
+
+  body.innerHTML = html
+  el.style.display = 'flex'
+}
+function closeFinModal() {
+  const el = document.getElementById('finModal')
+  if (el) el.style.display = 'none'
+}
+
 function renderConsumosBanner(el, confirmed, total, totalPlatos) {
   const other = total - confirmed
   el.innerHTML = `<div style="display:flex;gap:20px;align-items:center;background:rgba(255,255,255,.04);border:1px solid #333;border-radius:10px;padding:12px 16px;flex-wrap:wrap;font-size:13px">
@@ -3731,6 +3802,17 @@ function renderConsumoTable(el, agg) {
   el.innerHTML = html
 }
 </script>
+
+<div id="finModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:center;justify-content:center;padding:20px"
+     onclick="if(event.target===this)closeFinModal()">
+  <div style="background:#1a1a1a;border:1px solid #333;border-radius:16px;width:100%;max-width:640px;max-height:85vh;overflow-y:auto;padding:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div id="finModalTitle" style="font-weight:700;font-size:15px;color:var(--white)"></div>
+      <button onclick="closeFinModal()" style="background:none;border:none;color:#888;font-size:20px;line-height:1;cursor:pointer">✕</button>
+    </div>
+    <div id="finModalBody"></div>
+  </div>
+</div>
 
 <div id="orderModal" class="order-modal-overlay" style="display:none"
      onclick="if(event.target===this)closeOrderModal()">
