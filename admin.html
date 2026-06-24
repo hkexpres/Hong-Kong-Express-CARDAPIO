@@ -595,6 +595,17 @@ input[type="number"]{-moz-appearance:textfield}
 .cons-card-value{font-size:20px;font-weight:700;color:var(--white)}
 .cons-card-sub{font-size:11px;color:var(--gray2);margin-top:4px}
 .cons-card-cost{font-size:12px;color:var(--green2);margin-top:4px}
+.cons-card-pct{font-size:13px;font-weight:700;color:var(--yellow);margin-top:2px}
+.ins-filter-chip{
+  padding:5px 12px;border-radius:20px;border:1px solid #333;
+  background:transparent;color:var(--gray);font-size:12px;transition:all .15s;
+}
+.ins-filter-chip:hover{color:var(--white);border-color:#555}
+.ins-filter-chip.active{border-color:var(--yellow);color:var(--yellow);background:rgba(240,232,112,.1)}
+.ins-badge-order{
+  display:inline-block;margin-left:8px;padding:1px 7px;border-radius:10px;
+  background:rgba(240,232,112,.15);color:var(--yellow);font-size:10px;font-weight:600;vertical-align:middle;
+}
 </style>
 </head>
 <body>
@@ -827,6 +838,12 @@ input[type="number"]{-moz-appearance:textfield}
         <button class="art-btn art-btn-primary" onclick="addInsumoRow()">+ Criar</button>
       </div>
 
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 14px">
+        <div id="insFilterChips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <input type="text" id="insSearch" placeholder="🔍 Buscar insumo…" oninput="renderInsTable()"
+               style="margin-left:auto;background:var(--bg3);border:1px solid #333;border-radius:8px;color:var(--white);padding:7px 12px;font-size:13px;outline:none;min-width:180px">
+      </div>
+
       <div style="overflow-x:auto">
         <table class="art-table">
           <thead><tr>
@@ -887,6 +904,7 @@ input[type="number"]{-moz-appearance:textfield}
       </div>
       <div style="margin-top:14px;display:flex;gap:14px;align-items:center">
         <button class="art-btn art-btn-primary" onclick="saveFicha()">Salvar ficha</button>
+        <button class="art-btn art-btn-danger" id="fichaDeleteBtn" onclick="deleteFicha()" style="display:none">🗑 Eliminar ficha</button>
         <span class="fin-saved-msg" id="fichaSavedMsg">✓ Salvo</span>
       </div>
     </div>
@@ -983,6 +1001,11 @@ input[type="number"]{-moz-appearance:textfield}
 
       <div id="consBanner" style="margin-top:18px;min-height:20px"></div>
       <div id="consCards"  style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:20px"></div>
+      <div id="consDonutWrap" style="display:none;justify-content:center;margin-top:24px">
+        <div style="position:relative;height:240px;width:100%;max-width:480px">
+          <canvas id="consDonut"></canvas>
+        </div>
+      </div>
       <div id="consTable"  style="margin-top:28px"></div>
     </div>
   </div>
@@ -2476,7 +2499,7 @@ async function initArtigos() {
 }
 
 // ── ERP DATA (fonte: HKE_ERP_normalizado.xlsx) ──
-const ERP_DATA = {"insumos":[{"sku":"ING-LOMBO","name":"Lombo suíno","type":"proteína","unit":"g","bulkUnit":"kg","bulkCost":28.0,"costPerUnit":0.028},{"sku":"ING-COXA","name":"Coxa mole (carne)","type":"proteína","unit":"g","bulkUnit":"kg","bulkCost":50.0,"costPerUnit":0.05},{"sku":"ING-FRANGO","name":"Filé de frango","type":"proteína","unit":"g","bulkUnit":"kg","bulkCost":20.0,"costPerUnit":0.02},{"sku":"ING-ARROZ","name":"Arroz parboilizado (cozido)","type":"carbohidrato","unit":"g","bulkUnit":"kg","bulkCost":4.15,"costPerUnit":0.00415},{"sku":"ING-OVO","name":"Ovo","type":"vegetal","unit":"unidad","bulkUnit":"und","bulkCost":0.6,"costPerUnit":0.6},{"sku":"ING-CENOURA","name":"Cenoura","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":11.2,"costPerUnit":0.0112},{"sku":"ING-CEBOLA","name":"Cebola branca","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":5.55,"costPerUnit":0.00555},{"sku":"ING-CEBOLINHA","name":"Cebolinha (verdeo)","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":10.0,"costPerUnit":0.01},{"sku":"ING-REPOLHO","name":"Repolho roxo","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":13.0,"costPerUnit":0.013},{"sku":"ING-ALHO","name":"Alho","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":22.0,"costPerUnit":0.022},{"sku":"ING-PIM-VD","name":"Pimentão verde","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":7.7,"costPerUnit":0.0077},{"sku":"ING-PIM-VM","name":"Pimentão vermelho","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":29.0,"costPerUnit":0.029},{"sku":"ING-SHII","name":"Cogumelo shiitake","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":150.0,"costPerUnit":0.15},{"sku":"ING-BROCOLI","name":"Brócolis congelado","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":26.6667,"costPerUnit":0.026667},{"sku":"ING-CASTANHA","name":"Castanha de caju torrada s/ sal","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":90.0,"costPerUnit":0.09},{"sku":"ING-FIDEO","name":"Macarrão de sêmola","type":"carbohidrato","unit":"g","bulkUnit":"kg","bulkCost":6.3,"costPerUnit":0.0063},{"sku":"ING-OLEO","name":"Óleo vegetal","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":10.5,"costPerUnit":0.0105},{"sku":"ING-SESAMO","name":"Óleo de gergelim","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":39.0,"costPerUnit":0.039},{"sku":"ING-BOX","name":"Caixa antivazamento","type":"empaque","unit":"unidad","bulkUnit":"und","bulkCost":2.1,"costPerUnit":2.1},{"sku":"ING-PALITO","name":"Palitos de madeira (hashi)","type":"empaque","unit":"unidad","bulkUnit":"und","bulkCost":0.16,"costPerUnit":0.16},{"sku":"ING-MOLHEIRA","name":"Molheira (embalagem molho)","type":"empaque","unit":"unidad","bulkUnit":"und","bulkCost":0.15,"costPerUnit":0.15},{"sku":"ING-SOJA-CLARA","name":"Soja clara premium (Master Gold)","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":52.6316,"costPerUnit":0.052632},{"sku":"ING-SOJA-ESCURA","name":"Soja escura Haitian (老抽)","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":52.6316,"costPerUnit":0.052632},{"sku":"ING-SOJA-HINO","name":"Soja clara Hinomoto","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":14.84,"costPerUnit":0.01484},{"sku":"ING-OSTRA","name":"Molho de ostra Haday","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":24.85,"costPerUnit":0.02485},{"sku":"ING-MITSUWA","name":"Agridoce Mitsuwa","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":19.4,"costPerUnit":0.0194},{"sku":"ING-TARE","name":"Tare Mitsuwa (base teriyaki)","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":16.834,"costPerUnit":0.016834},{"sku":"ING-SRIRACHA","name":"Sriracha Nostimo","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":145.8333,"costPerUnit":0.145833},{"sku":"ING-VINAGRE","name":"Vinagre de arroz","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":10.0,"costPerUnit":0.01},{"sku":"MOL-MADRE","name":"Salsa Madre HKE","type":"molho","unit":"ml","bulkUnit":"L","bulkCost":38.53696,"costPerUnit":0.038537,"components":[{"ref":"ING-SOJA-CLARA","fraction":0.45},{"ref":"ING-SOJA-ESCURA","fraction":0.15},{"ref":"ING-OSTRA","fraction":0.28}],"costPerLiter":38.53696},{"sku":"MOL-AGRI","name":"Salsa Agripicante","type":"molho","unit":"ml","bulkUnit":"L","bulkCost":29.10106,"costPerUnit":0.029101,"components":[{"ref":"ING-MITSUWA","fraction":0.65},{"ref":"ING-SRIRACHA","fraction":0.08},{"ref":"ING-SOJA-HINO","fraction":0.16},{"ref":"ING-SESAMO","fraction":0.05},{"ref":"ING-VINAGRE","fraction":0.05}],"costPerLiter":29.101064},{"sku":"MOL-TERI","name":"Salsa Teriyaki","type":"molho","unit":"ml","bulkUnit":"L","bulkCost":16.1522,"costPerUnit":0.016152,"components":[{"ref":"ING-TARE","fraction":0.8},{"ref":"ING-OSTRA","fraction":0.1},{"ref":"ING-VINAGRE","fraction":0.02}],"costPerLiter":16.1522},{"sku":"MOL-KPAO","name":"Salsa Kung Pao","type":"molho","unit":"ml","bulkUnit":"L","bulkCost":48.29117,"costPerUnit":0.048291,"components":[{"ref":"MOL-MADRE","fraction":1.0},{"ref":"ING-SRIRACHA","fraction":0.1}],"costPerLiter":48.291173},{"sku":"ING-GYOZA","name":"Gyoza (unidade, congelada)","type":"acomp","unit":"unidad","bulkUnit":"und","bulkCost":1.908,"costPerUnit":1.908}],"products":[{"sku":"CF-FRG","name":"Chao Fan Frango","category":"pratos","cost":10.3739,"price":36.0},{"sku":"CF-PRC","name":"Chao Fan Cerdo","category":"pratos","cost":11.6539,"price":39.0},{"sku":"CF-CRN","name":"Chao Fan Carne","category":"pratos","cost":15.1739,"price":45.0},{"sku":"CF-MST","name":"Chao Fan Misto","category":"pratos","cost":12.7739,"price":41.0},{"sku":"CM-FRG","name":"Chao Mein Frango","category":"pratos","cost":10.4107,"price":39.5},{"sku":"CM-PRC","name":"Chao Mein Cerdo","category":"pratos","cost":11.6907,"price":41.0},{"sku":"CM-CRN","name":"Chao Mein Carne","category":"pratos","cost":15.2107,"price":48.0},{"sku":"CM-MST","name":"Chao Mein Misto","category":"pratos","cost":12.8107,"price":44.0},{"sku":"CS-ARZ","name":"Chop Suey Arroz","category":"pratos","cost":10.9437,"price":40.0},{"sku":"CS-SEM","name":"Chop Suey Macarrão","category":"pratos","cost":11.2477,"price":45.0},{"sku":"SK-ARZ","name":"Shitake Agridoce Arroz","category":"pratos","cost":11.8637,"price":42.0},{"sku":"SK-SEM","name":"Shitake Agridoce Macarrão","category":"pratos","cost":12.1677,"price":47.0},{"sku":"TRY-CRN","name":"Carne Teriyaki","category":"pratos","cost":22.4866,"price":58.0},{"sku":"AGP-FRG","name":"Agripicante Frango","category":"pratos","cost":12.1166,"price":45.0},{"sku":"AGP-PRC","name":"Agripicante Cerdo","category":"pratos","cost":14.0366,"price":50.0},{"sku":"AGP-MST","name":"Agripicante Misto","category":"pratos","cost":13.0766,"price":47.0},{"sku":"KP-FRG","name":"Kung Pao Frango","category":"pratos","cost":14.6617,"price":48.0},{"sku":"KP-CRN","name":"Kung Pao Carne","category":"pratos","cost":21.8617,"price":58.0},{"sku":"KP-MST","name":"Kung Pao Misto","category":"pratos","cost":18.2617,"price":52.0},{"sku":"CMB-DRG","name":"Chao Fan Frango + Agripicante Misto + 5 Gyoza","category":"combos","cost":32.9904,"price":95.2,"components":"CF-FRG + AGP-MST + GYZ-5"},{"sku":"CMB-PRM","name":"Carne Teriyaki + 8 Gyoza","category":"combos","cost":37.7506,"price":88.2,"components":"TRY-CRN + GYZ-8"},{"sku":"CMB-DUO","name":"Chao Fan Cerdo + Chao Mein Frango","category":"combos","cost":22.0646,"price":66.725,"components":"CF-PRC + CM-FRG"},{"sku":"CMB-VRD","name":"Kung Pao Frango + Chop Suey","category":"combos","cost":25.6054,"price":79.2,"components":"KP-FRG + CS-ARZ"},{"sku":"CMB-HK","name":"Kung Pao Frango + Carne Teriyaki + Chao Fan Cerdo","category":"combos","cost":48.8022,"price":123.25,"components":"KP-FRG + TRY-CRN + CF-PRC"},{"sku":"B-GUA","name":"Guaraná Antártica","category":"bebidas","cost":3.25,"price":8.0},{"sku":"B-COCA","name":"Coca normal","category":"bebidas","cost":4.5,"price":8.0},{"sku":"B-ZERO","name":"Coca zero","category":"bebidas","cost":4.3,"price":8.0},{"sku":"B-AMS","name":"Amstel lata 350ml","category":"bebidas","cost":4.0,"price":10.0},{"sku":"B-HEI","name":"Heineken lata 350ml","category":"bebidas","cost":7.0,"price":12.0},{"sku":"GYZ-1","name":"Gyoza x1","category":"acomp","cost":1.908,"price":3.5},{"sku":"GYZ-5","name":"Gyoza x5","category":"acomp","cost":9.54,"price":29.0},{"sku":"GYZ-8","name":"Gyoza x8","category":"acomp","cost":15.264,"price":40.0},{"sku":"SAL-HINO","name":"Molho Soja Hinomoto (30ml)","category":"molhos","cost":0.5952,"price":4.0},{"sku":"SAL-TERI","name":"Molho Teriyaki (30ml)","category":"molhos","cost":0.6346,"price":4.0},{"sku":"SAL-AGRI","name":"Molho Agripicante (30ml)","category":"molhos","cost":0.745,"price":4.0},{"sku":"SAL-AGRID","name":"Molho Agridoce (30ml)","category":"molhos","cost":0.732,"price":4.0},{"sku":"SAL-KPAO","name":"Molho Kung Pao (30ml)","category":"molhos","cost":0.8804,"price":4.0}],"fichas":{"CF-FRG":[{"ref":"ING-ARROZ","qty":230.0},{"ref":"ING-OVO","qty":2.0},{"ref":"ING-CENOURA","qty":60.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"ING-REPOLHO","qty":10.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":30.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-SESAMO","qty":5.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FRANGO","qty":160.0}],"CF-PRC":[{"ref":"ING-ARROZ","qty":230.0},{"ref":"ING-OVO","qty":2.0},{"ref":"ING-CENOURA","qty":60.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"ING-REPOLHO","qty":10.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":30.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-SESAMO","qty":5.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-LOMBO","qty":160.0}],"CF-CRN":[{"ref":"ING-ARROZ","qty":230.0},{"ref":"ING-OVO","qty":2.0},{"ref":"ING-CENOURA","qty":60.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"ING-REPOLHO","qty":10.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":30.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-SESAMO","qty":5.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-COXA","qty":160.0}],"CF-MST":[{"ref":"ING-ARROZ","qty":230.0},{"ref":"ING-OVO","qty":2.0},{"ref":"ING-CENOURA","qty":60.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"ING-REPOLHO","qty":10.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":30.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-SESAMO","qty":5.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FRANGO","qty":80.0},{"ref":"ING-COXA","qty":80.0}],"CM-FRG":[{"ref":"ING-FIDEO","qty":180.0},{"ref":"ING-CENOURA","qty":30.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":40.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FRANGO","qty":160.0}],"CM-PRC":[{"ref":"ING-FIDEO","qty":180.0},{"ref":"ING-CENOURA","qty":30.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":40.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-LOMBO","qty":160.0}],"CM-CRN":[{"ref":"ING-FIDEO","qty":180.0},{"ref":"ING-CENOURA","qty":30.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":40.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-COXA","qty":160.0}],"CM-MST":[{"ref":"ING-FIDEO","qty":180.0},{"ref":"ING-CENOURA","qty":30.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":40.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FRANGO","qty":80.0},{"ref":"ING-COXA","qty":80.0}],"CS-ARZ":[{"ref":"ING-BROCOLI","qty":150.0},{"ref":"ING-CENOURA","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":200.0}],"CS-SEM":[{"ref":"ING-BROCOLI","qty":150.0},{"ref":"ING-CENOURA","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FIDEO","qty":180.0}],"SK-ARZ":[{"ref":"ING-SHII","qty":30.0},{"ref":"ING-CENOURA","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-ARROZ","qty":200.0}],"SK-SEM":[{"ref":"ING-SHII","qty":30.0},{"ref":"ING-CENOURA","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-FIDEO","qty":180.0}],"TRY-CRN":[{"ref":"ING-SHII","qty":40.0},{"ref":"ING-CEBOLA","qty":50.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"MOL-TERI","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":150.0},{"ref":"ING-COXA","qty":240}],"AGP-FRG":[{"ref":"ING-PIM-VM","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-AGRI","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FIDEO","qty":200.0},{"ref":"ING-FRANGO","qty":240.0}],"AGP-PRC":[{"ref":"ING-PIM-VM","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-AGRI","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FIDEO","qty":200.0},{"ref":"ING-LOMBO","qty":240.0}],"AGP-MST":[{"ref":"ING-PIM-VM","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-AGRI","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FIDEO","qty":200.0},{"ref":"ING-FRANGO","qty":120.0},{"ref":"ING-LOMBO","qty":120.0}],"KP-FRG":[{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-CEBOLINHA","qty":15.0},{"ref":"ING-CASTANHA","qty":30.0},{"ref":"MOL-KPAO","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":180.0},{"ref":"ING-FRANGO","qty":240.0}],"KP-CRN":[{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-CEBOLINHA","qty":15.0},{"ref":"ING-CASTANHA","qty":30.0},{"ref":"MOL-KPAO","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":180.0},{"ref":"ING-COXA","qty":240.0}],"KP-MST":[{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-CEBOLINHA","qty":15.0},{"ref":"ING-CASTANHA","qty":30.0},{"ref":"MOL-KPAO","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":180.0},{"ref":"ING-FRANGO","qty":120.0},{"ref":"ING-COXA","qty":120.0}],"GYZ-1":[{"ref":"ING-GYOZA","qty":1}],"GYZ-5":[{"ref":"ING-GYOZA","qty":5}],"GYZ-8":[{"ref":"ING-GYOZA","qty":8}]}}
+const ERP_DATA = {"insumos":[{"sku":"ING-LOMBO","name":"Lombo suíno","type":"proteína","unit":"g","bulkUnit":"kg","bulkCost":28.0,"costPerUnit":0.028},{"sku":"ING-COXA","name":"Coxa mole (carne)","type":"proteína","unit":"g","bulkUnit":"kg","bulkCost":50.0,"costPerUnit":0.05},{"sku":"ING-FRANGO","name":"Filé de frango","type":"proteína","unit":"g","bulkUnit":"kg","bulkCost":20.0,"costPerUnit":0.02},{"sku":"ING-ARROZ","name":"Arroz parboilizado (cozido)","type":"carbohidrato","unit":"g","bulkUnit":"kg","bulkCost":4.15,"costPerUnit":0.00415},{"sku":"ING-OVO","name":"Ovo","type":"vegetal","unit":"unidad","bulkUnit":"und","bulkCost":0.6,"costPerUnit":0.6},{"sku":"ING-CENOURA","name":"Cenoura","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":11.2,"costPerUnit":0.0112},{"sku":"ING-CEBOLA","name":"Cebola branca","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":5.55,"costPerUnit":0.00555},{"sku":"ING-CEBOLINHA","name":"Cebolinha (verdeo)","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":10.0,"costPerUnit":0.01},{"sku":"ING-REPOLHO","name":"Repolho roxo","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":13.0,"costPerUnit":0.013},{"sku":"ING-ALHO","name":"Alho","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":22.0,"costPerUnit":0.022},{"sku":"ING-PIM-VD","name":"Pimentão verde","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":7.7,"costPerUnit":0.0077},{"sku":"ING-PIM-VM","name":"Pimentão vermelho","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":29.0,"costPerUnit":0.029},{"sku":"ING-SHII","name":"Cogumelo shiitake","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":150.0,"costPerUnit":0.15},{"sku":"ING-BROCOLI","name":"Brócolis congelado","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":26.6667,"costPerUnit":0.026667},{"sku":"ING-CASTANHA","name":"Castanha de caju torrada s/ sal","type":"vegetal","unit":"g","bulkUnit":"kg","bulkCost":90.0,"costPerUnit":0.09},{"sku":"ING-FIDEO","name":"Macarrão de sêmola","type":"carbohidrato","unit":"g","bulkUnit":"kg","bulkCost":6.3,"costPerUnit":0.0063},{"sku":"ING-OLEO","name":"Óleo vegetal","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":10.5,"costPerUnit":0.0105},{"sku":"ING-SESAMO","name":"Óleo de gergelim","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":39.0,"costPerUnit":0.039},{"sku":"ING-BOX","name":"Caixa antivazamento","type":"empaque","unit":"unidad","bulkUnit":"und","bulkCost":2.1,"costPerUnit":2.1},{"sku":"ING-PALITO","name":"Palitos de madeira (hashi)","type":"empaque","unit":"unidad","bulkUnit":"und","bulkCost":0.16,"costPerUnit":0.16},{"sku":"ING-MOLHEIRA","name":"Molheira (embalagem molho)","type":"empaque","unit":"unidad","bulkUnit":"und","bulkCost":0.15,"costPerUnit":0.15},{"sku":"ING-SOJA-CLARA","name":"Soja clara premium (Master Gold)","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":52.6316,"costPerUnit":0.052632},{"sku":"ING-SOJA-ESCURA","name":"Soja escura Haitian (老抽)","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":52.6316,"costPerUnit":0.052632},{"sku":"ING-SOJA-HINO","name":"Soja clara Hinomoto","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":14.84,"costPerUnit":0.01484},{"sku":"ING-OSTRA","name":"Molho de ostra Haday","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":24.85,"costPerUnit":0.02485},{"sku":"ING-MITSUWA","name":"Agridoce Mitsuwa","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":19.4,"costPerUnit":0.0194},{"sku":"ING-TARE","name":"Tare Mitsuwa (base teriyaki)","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":16.834,"costPerUnit":0.016834},{"sku":"ING-SRIRACHA","name":"Sriracha Nostimo","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":145.8333,"costPerUnit":0.145833},{"sku":"ING-VINAGRE","name":"Vinagre de arroz","type":"condimento","unit":"ml","bulkUnit":"L","bulkCost":10.0,"costPerUnit":0.01},{"sku":"MOL-MADRE","name":"Salsa Madre HKE","type":"molho","unit":"ml","bulkUnit":"L","bulkCost":38.53696,"costPerUnit":0.038537,"components":[{"ref":"ING-SOJA-CLARA","fraction":0.45},{"ref":"ING-SOJA-ESCURA","fraction":0.15},{"ref":"ING-OSTRA","fraction":0.28}],"costPerLiter":38.53696},{"sku":"MOL-AGRI","name":"Salsa Agripicante","type":"molho","unit":"ml","bulkUnit":"L","bulkCost":29.10106,"costPerUnit":0.029101,"components":[{"ref":"ING-MITSUWA","fraction":0.65},{"ref":"ING-SRIRACHA","fraction":0.08},{"ref":"ING-SOJA-HINO","fraction":0.16},{"ref":"ING-SESAMO","fraction":0.05},{"ref":"ING-VINAGRE","fraction":0.05}],"costPerLiter":29.101064},{"sku":"MOL-TERI","name":"Salsa Teriyaki","type":"molho","unit":"ml","bulkUnit":"L","bulkCost":16.1522,"costPerUnit":0.016152,"components":[{"ref":"ING-TARE","fraction":0.8},{"ref":"ING-OSTRA","fraction":0.1},{"ref":"ING-VINAGRE","fraction":0.02}],"costPerLiter":16.1522},{"sku":"MOL-KPAO","name":"Salsa Kung Pao","type":"molho","unit":"ml","bulkUnit":"L","bulkCost":48.29117,"costPerUnit":0.048291,"components":[{"ref":"MOL-MADRE","fraction":1.0},{"ref":"ING-SRIRACHA","fraction":0.1}],"costPerLiter":48.291173},{"sku":"ING-GYOZA","name":"Gyoza (unidade, congelada)","type":"acomp","unit":"unidad","bulkUnit":"und","bulkCost":1.908,"costPerUnit":1.908},{"sku":"ING-BOLSA","name":"Saco de papel (delivery)","type":"empaque","unit":"unidad","bulkUnit":"und","bulkCost":0.5,"costPerUnit":0.5,"perOrder":true}],"products":[{"sku":"CF-FRG","name":"Chao Fan Frango","category":"pratos","cost":10.3739,"price":36.0},{"sku":"CF-PRC","name":"Chao Fan Cerdo","category":"pratos","cost":11.6539,"price":39.0},{"sku":"CF-CRN","name":"Chao Fan Carne","category":"pratos","cost":15.1739,"price":45.0},{"sku":"CF-MST","name":"Chao Fan Misto","category":"pratos","cost":12.7739,"price":41.0},{"sku":"CM-FRG","name":"Chao Mein Frango","category":"pratos","cost":10.4107,"price":39.5},{"sku":"CM-PRC","name":"Chao Mein Cerdo","category":"pratos","cost":11.6907,"price":41.0},{"sku":"CM-CRN","name":"Chao Mein Carne","category":"pratos","cost":15.2107,"price":48.0},{"sku":"CM-MST","name":"Chao Mein Misto","category":"pratos","cost":12.8107,"price":44.0},{"sku":"CS-ARZ","name":"Chop Suey Arroz","category":"pratos","cost":10.9437,"price":40.0},{"sku":"CS-SEM","name":"Chop Suey Macarrão","category":"pratos","cost":11.2477,"price":45.0},{"sku":"SK-ARZ","name":"Shitake Agridoce Arroz","category":"pratos","cost":11.8637,"price":42.0},{"sku":"SK-SEM","name":"Shitake Agridoce Macarrão","category":"pratos","cost":12.1677,"price":47.0},{"sku":"TRY-CRN","name":"Carne Teriyaki","category":"pratos","cost":22.4866,"price":58.0},{"sku":"AGP-FRG","name":"Agripicante Frango","category":"pratos","cost":12.1166,"price":45.0},{"sku":"AGP-PRC","name":"Agripicante Cerdo","category":"pratos","cost":14.0366,"price":50.0},{"sku":"AGP-MST","name":"Agripicante Misto","category":"pratos","cost":13.0766,"price":47.0},{"sku":"KP-FRG","name":"Kung Pao Frango","category":"pratos","cost":14.6617,"price":48.0},{"sku":"KP-CRN","name":"Kung Pao Carne","category":"pratos","cost":21.8617,"price":58.0},{"sku":"KP-MST","name":"Kung Pao Misto","category":"pratos","cost":18.2617,"price":52.0},{"sku":"CMB-DRG","name":"Chao Fan Frango + Agripicante Misto + 5 Gyoza","category":"combos","cost":32.9904,"price":95.2,"components":"CF-FRG + AGP-MST + GYZ-5"},{"sku":"CMB-PRM","name":"Carne Teriyaki + 8 Gyoza","category":"combos","cost":37.7506,"price":88.2,"components":"TRY-CRN + GYZ-8"},{"sku":"CMB-DUO","name":"Chao Fan Cerdo + Chao Mein Frango","category":"combos","cost":22.0646,"price":66.725,"components":"CF-PRC + CM-FRG"},{"sku":"CMB-VRD","name":"Kung Pao Frango + Chop Suey","category":"combos","cost":25.6054,"price":79.2,"components":"KP-FRG + CS-ARZ"},{"sku":"CMB-HK","name":"Kung Pao Frango + Carne Teriyaki + Chao Fan Cerdo","category":"combos","cost":48.8022,"price":123.25,"components":"KP-FRG + TRY-CRN + CF-PRC"},{"sku":"B-GUA","name":"Guaraná Antártica","category":"bebidas","cost":3.25,"price":8.0},{"sku":"B-COCA","name":"Coca normal","category":"bebidas","cost":4.5,"price":8.0},{"sku":"B-ZERO","name":"Coca zero","category":"bebidas","cost":4.3,"price":8.0},{"sku":"B-AMS","name":"Amstel lata 350ml","category":"bebidas","cost":4.0,"price":10.0},{"sku":"B-HEI","name":"Heineken lata 350ml","category":"bebidas","cost":7.0,"price":12.0},{"sku":"GYZ-1","name":"Gyoza x1","category":"acomp","cost":1.908,"price":3.5},{"sku":"GYZ-5","name":"Gyoza x5","category":"acomp","cost":9.54,"price":29.0},{"sku":"GYZ-8","name":"Gyoza x8","category":"acomp","cost":15.264,"price":40.0},{"sku":"SAL-HINO","name":"Molho Soja Hinomoto (30ml)","category":"molhos","cost":0.5952,"price":4.0},{"sku":"SAL-TERI","name":"Molho Teriyaki (30ml)","category":"molhos","cost":0.6346,"price":4.0},{"sku":"SAL-AGRI","name":"Molho Agripicante (30ml)","category":"molhos","cost":0.745,"price":4.0},{"sku":"SAL-AGRID","name":"Molho Agridoce (30ml)","category":"molhos","cost":0.732,"price":4.0},{"sku":"SAL-KPAO","name":"Molho Kung Pao (30ml)","category":"molhos","cost":0.8804,"price":4.0}],"fichas":{"CF-FRG":[{"ref":"ING-ARROZ","qty":230.0},{"ref":"ING-OVO","qty":2.0},{"ref":"ING-CENOURA","qty":60.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"ING-REPOLHO","qty":10.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":30.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-SESAMO","qty":5.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FRANGO","qty":160.0}],"CF-PRC":[{"ref":"ING-ARROZ","qty":230.0},{"ref":"ING-OVO","qty":2.0},{"ref":"ING-CENOURA","qty":60.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"ING-REPOLHO","qty":10.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":30.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-SESAMO","qty":5.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-LOMBO","qty":160.0}],"CF-CRN":[{"ref":"ING-ARROZ","qty":230.0},{"ref":"ING-OVO","qty":2.0},{"ref":"ING-CENOURA","qty":60.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"ING-REPOLHO","qty":10.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":30.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-SESAMO","qty":5.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-COXA","qty":160.0}],"CF-MST":[{"ref":"ING-ARROZ","qty":230.0},{"ref":"ING-OVO","qty":2.0},{"ref":"ING-CENOURA","qty":60.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"ING-REPOLHO","qty":10.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":30.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-SESAMO","qty":5.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FRANGO","qty":80.0},{"ref":"ING-COXA","qty":80.0}],"CM-FRG":[{"ref":"ING-FIDEO","qty":180.0},{"ref":"ING-CENOURA","qty":30.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":40.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FRANGO","qty":160.0}],"CM-PRC":[{"ref":"ING-FIDEO","qty":180.0},{"ref":"ING-CENOURA","qty":30.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":40.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-LOMBO","qty":160.0}],"CM-CRN":[{"ref":"ING-FIDEO","qty":180.0},{"ref":"ING-CENOURA","qty":30.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":40.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-COXA","qty":160.0}],"CM-MST":[{"ref":"ING-FIDEO","qty":180.0},{"ref":"ING-CENOURA","qty":30.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":40.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FRANGO","qty":80.0},{"ref":"ING-COXA","qty":80.0}],"CS-ARZ":[{"ref":"ING-BROCOLI","qty":150.0},{"ref":"ING-CENOURA","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":200.0}],"CS-SEM":[{"ref":"ING-BROCOLI","qty":150.0},{"ref":"ING-CENOURA","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FIDEO","qty":180.0}],"SK-ARZ":[{"ref":"ING-SHII","qty":30.0},{"ref":"ING-CENOURA","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-ARROZ","qty":200.0}],"SK-SEM":[{"ref":"ING-SHII","qty":30.0},{"ref":"ING-CENOURA","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-REPOLHO","qty":20.0},{"ref":"MOL-MADRE","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-FIDEO","qty":180.0}],"TRY-CRN":[{"ref":"ING-SHII","qty":40.0},{"ref":"ING-CEBOLA","qty":50.0},{"ref":"ING-CEBOLINHA","qty":20.0},{"ref":"MOL-TERI","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":150.0},{"ref":"ING-COXA","qty":240}],"AGP-FRG":[{"ref":"ING-PIM-VM","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-AGRI","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FIDEO","qty":200.0},{"ref":"ING-FRANGO","qty":240.0}],"AGP-PRC":[{"ref":"ING-PIM-VM","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-AGRI","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FIDEO","qty":200.0},{"ref":"ING-LOMBO","qty":240.0}],"AGP-MST":[{"ref":"ING-PIM-VM","qty":50.0},{"ref":"ING-CEBOLA","qty":60.0},{"ref":"ING-ALHO","qty":5.0},{"ref":"MOL-AGRI","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-FIDEO","qty":200.0},{"ref":"ING-FRANGO","qty":120.0},{"ref":"ING-LOMBO","qty":120.0}],"KP-FRG":[{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-CEBOLINHA","qty":15.0},{"ref":"ING-CASTANHA","qty":30.0},{"ref":"MOL-KPAO","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":180.0},{"ref":"ING-FRANGO","qty":240.0}],"KP-CRN":[{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-CEBOLINHA","qty":15.0},{"ref":"ING-CASTANHA","qty":30.0},{"ref":"MOL-KPAO","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":180.0},{"ref":"ING-COXA","qty":240.0}],"KP-MST":[{"ref":"ING-PIM-VM","qty":20.0},{"ref":"ING-CEBOLA","qty":25.0},{"ref":"ING-PIM-VD","qty":30.0},{"ref":"ING-CEBOLINHA","qty":15.0},{"ref":"ING-CASTANHA","qty":30.0},{"ref":"MOL-KPAO","qty":60.0},{"ref":"ING-OLEO","qty":15.0},{"ref":"ING-BOX","qty":1.0},{"ref":"ING-PALITO","qty":1.0},{"ref":"ING-ARROZ","qty":180.0},{"ref":"ING-FRANGO","qty":120.0},{"ref":"ING-COXA","qty":120.0}],"GYZ-1":[{"ref":"ING-GYOZA","qty":1}],"GYZ-5":[{"ref":"ING-GYOZA","qty":5}],"GYZ-8":[{"ref":"ING-GYOZA","qty":8}]}}
 
 // ── INSUMOS ──
 // Insumos default = ingredientes + molhos do ERP (chave = SKU), com custo.
@@ -2486,6 +2509,27 @@ const INS_TYPE_ORDER  = ['proteína', 'vegetal', 'carbohidrato', 'condimento', '
 
 let insumosBuffer   = {}
 let insumosSnapshot = {}
+let insFilterType   = 'all'
+
+function setInsFilter(type) {
+  insFilterType = type
+  renderInsFilterChips()
+  renderInsTable()
+}
+
+function renderInsFilterChips() {
+  const el = document.getElementById('insFilterChips')
+  if (!el) return
+  const counts = {}
+  mergeInsumos().forEach(i => { counts[i.type] = (counts[i.type] || 0) + 1 })
+  const total = mergeInsumos().length
+  let html = `<button class="ins-filter-chip ${insFilterType === 'all' ? 'active' : ''}" onclick="setInsFilter('all')">Todos (${total})</button>`
+  INS_TYPE_ORDER.forEach(t => {
+    if (!counts[t]) return
+    html += `<button class="ins-filter-chip ${insFilterType === t ? 'active' : ''}" onclick="setInsFilter('${t}')">${INS_TYPE_LABELS[t] || t} (${counts[t]})</button>`
+  })
+  el.innerHTML = html
+}
 
 async function loadInsumos() {
   let snap = await db.collection('insumos').get()
@@ -2515,10 +2559,18 @@ function mergeInsumos() {
 }
 
 function renderInsTable() {
-  const items = mergeInsumos()
+  renderInsFilterChips()
+  const searchEl = document.getElementById('insSearch')
+  const search   = (searchEl ? searchEl.value : '').toLowerCase().trim()
+  const items = mergeInsumos().filter(i => {
+    if (insFilterType !== 'all' && i.type !== insFilterType) return false
+    if (search && !(i.name || '').toLowerCase().includes(search)) return false
+    return true
+  })
   const body  = document.getElementById('insTableBody')
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="6" style="color:#555;padding:24px;text-align:center">Nenhum insumo cadastrado.</td></tr>'
+    const msg = mergeInsumos().length ? 'Nenhum insumo neste filtro.' : 'Nenhum insumo cadastrado.'
+    body.innerHTML = `<tr><td colspan="6" style="color:#555;padding:24px;text-align:center">${msg}</td></tr>`
     return
   }
   body.innerHTML = items.map(it => {
@@ -2532,8 +2584,9 @@ function renderInsTable() {
     const safeId = it.id.replace(/'/g, "\\'")
     const bulkCost = (it.bulkCost != null ? it.bulkCost : '')
     const bulkU = it.bulkUnit || (it.unit === 'unidad' ? 'und' : it.unit === 'ml' ? 'L' : 'kg')
+    const orderBadge = it.perOrder ? '<span class="ins-badge-order" title="Consumido 1× por pedido, não por prato">1×pedido</span>' : ''
     return `<tr class="${activeClass}" data-id="${it.id}">
-      <td style="min-width:200px"><input class="art-inp ins-inp" data-field="name" data-id="${it.id}" value="${(it.name||'').replace(/"/g,'&quot;')}"></td>
+      <td style="min-width:200px"><input class="art-inp ins-inp" data-field="name" data-id="${it.id}" value="${(it.name||'').replace(/"/g,'&quot;')}">${orderBadge}</td>
       <td><select class="art-inp ins-inp" data-field="type" data-id="${it.id}">${typeOpts}</select></td>
       <td><select class="art-inp ins-inp" data-field="unit" data-id="${it.id}">${unitOpts}</select></td>
       <td style="text-align:right;white-space:nowrap">
@@ -2804,7 +2857,7 @@ function renderFichaProdSelect() {
 function renderFichaInsSelect() {
   const sel = document.getElementById('fichaInsSelect')
   let html = '', lastType = null
-  fichaInsumos.forEach(i => {
+  fichaInsumos.filter(i => !i.perOrder).forEach(i => {
     if (i.type !== lastType) {
       if (lastType !== null) html += '</optgroup>'
       html += `<optgroup label="${INS_TYPE_LABELS[i.type] || i.type}">`
@@ -2832,7 +2885,26 @@ function onFichaProdChange() {
   const existing = fichaMap[fichaCurrentId]
   fichaDraft = existing ? (existing.lines || []).map(l => ({ ...l })) : []
   card.style.display = 'block'
+  const delBtn = document.getElementById('fichaDeleteBtn')
+  if (delBtn) delBtn.style.display = (existing && (existing.lines || []).length) ? 'inline-block' : 'none'
   renderFichaLines()
+}
+
+async function deleteFicha() {
+  if (!fichaCurrentId) return
+  const prod = fichaProducts.find(p => p.id === fichaCurrentId)
+  if (!confirm(`Eliminar a ficha técnica de "${prod ? prod.name : 'este prato'}"?\n\nO prato continua no catálogo — só a ficha (ingredientes) é removida.`)) return
+  try {
+    await db.collection('recipes').doc(fichaCurrentId).delete()
+    delete fichaMap[fichaCurrentId]
+    fichaDraft = []
+    renderFichaLines()
+    renderFichaProdSelect()
+    renderFichaMissingBanner()
+    document.getElementById('fichaProdSelect').value = fichaCurrentId
+    const delBtn = document.getElementById('fichaDeleteBtn')
+    if (delBtn) delBtn.style.display = 'none'
+  } catch (e) { alert('Erro ao eliminar ficha: ' + e.message) }
 }
 
 function renderFichaLines() {
@@ -2950,6 +3022,8 @@ async function saveFicha() {
     renderFichaProdSelect()
     renderFichaMissingBanner()
     document.getElementById('fichaProdSelect').value = fichaCurrentId
+    const delBtn = document.getElementById('fichaDeleteBtn')
+    if (delBtn) delBtn.style.display = lines.length ? 'inline-block' : 'none'
     const msg = document.getElementById('fichaSavedMsg')
     msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500)
   } catch (e) { alert('Erro ao salvar ficha: ' + e.message) }
@@ -3396,6 +3470,16 @@ async function loadConsumos() {
       })
     })
 
+    // Per-order insumos (e.g. saco de papel): consumed 1× per confirmed order, not per dish
+    Object.values(insumoMap).forEach(ins => {
+      if (!ins.perOrder || confirmedOrders.length <= 0) return
+      if (!agg[ins.id]) agg[ins.id] = {
+        sku: ins.id, name: ins.name, type: ins.type,
+        unit: ins.unit, costPerUnit: ins.costPerUnit || 0, qty: 0, perOrder: true
+      }
+      agg[ins.id].qty += confirmedOrders.length
+    })
+
     renderConsumosBanner(banner, confirmedOrders.length, allOrders.length)
     renderConsumoCards(cards, agg, confirmedOrders.length)
     renderConsumoTable(table, agg)
@@ -3442,6 +3526,12 @@ function fmtConsQty(qty, unit) {
   return { val: v, unit: unit || '' }
 }
 
+const CONS_TYPE_COLORS = {
+  proteína:'#FF7070', vegetal:'#81C784', carbohidrato:'#F0E870',
+  condimento:'#64B5F6', molho:'#BA68C8', empaque:'#FFB74D', acomp:'#4DD0E1'
+}
+let consDonutChart = null
+
 function renderConsumoCards(el, agg, orderCount) {
   const byType = {}
   Object.values(agg).forEach(item => {
@@ -3450,23 +3540,56 @@ function renderConsumoCards(el, agg, orderCount) {
     byType[item.type].count += 1
   })
 
+  const grandTotal = Object.values(byType).reduce((s, g) => s + g.cost, 0)
   const ICONS = { proteína:'🥩', vegetal:'🥦', carbohidrato:'🍚', condimento:'🧴', molho:'🥣', empaque:'📦', acomp:'🥟' }
   let html = ''
   INS_TYPE_ORDER.forEach(type => {
     const g = byType[type]
     if (!g) return
+    const pct = grandTotal > 0 ? (g.cost / grandTotal * 100) : 0
     html += `<div class="cons-card">
       <div class="cons-card-label">${ICONS[type] || '•'} ${INS_TYPE_LABELS[type] || type}</div>
       <div class="cons-card-value">${fmtBRL(g.cost)}</div>
+      <div class="cons-card-pct">${pct.toFixed(1)}%</div>
       <div class="cons-card-sub">${g.count} insumo${g.count !== 1 ? 's' : ''}</div>
     </div>`
   })
-  html += `<div class="cons-card">
-    <div class="cons-card-label">🛍 Embalagem pedido</div>
-    <div class="cons-card-value">${orderCount}</div>
-    <div class="cons-card-sub">bolsa${orderCount !== 1 ? 's' : ''} de papel</div>
-  </div>`
   el.innerHTML = html
+  renderConsumoDonut(byType, grandTotal)
+}
+
+function renderConsumoDonut(byType, grandTotal) {
+  const canvas = document.getElementById('consDonut')
+  if (!canvas) return
+  const wrap = document.getElementById('consDonutWrap')
+  const types  = INS_TYPE_ORDER.filter(t => byType[t] && byType[t].cost > 0)
+  if (!types.length || grandTotal <= 0) {
+    if (consDonutChart) { consDonutChart.destroy(); consDonutChart = null }
+    if (wrap) wrap.style.display = 'none'
+    return
+  }
+  if (wrap) wrap.style.display = 'flex'
+  const labels = types.map(t => INS_TYPE_LABELS[t] || t)
+  const data   = types.map(t => +byType[t].cost.toFixed(2))
+  const colors = types.map(t => CONS_TYPE_COLORS[t] || '#888')
+
+  if (consDonutChart) consDonutChart.destroy()
+  consDonutChart = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#111', borderWidth: 2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: {
+        legend: { position: 'right', labels: { color: '#ccc', font: { size: 12 }, padding: 10, boxWidth: 14 } },
+        datalabels: {
+          color: '#000', font: { weight: 'bold', size: 11 },
+          formatter: (v) => { const p = v / grandTotal * 100; return p >= 6 ? p.toFixed(0) + '%' : '' }
+        },
+        tooltip: { callbacks: { label: (c) => `${c.label}: ${fmtBRL(c.parsed)} (${(c.parsed / grandTotal * 100).toFixed(1)}%)` } }
+      }
+    },
+    plugins: [ChartDataLabels]
+  })
 }
 
 function renderConsumoTable(el, agg) {
