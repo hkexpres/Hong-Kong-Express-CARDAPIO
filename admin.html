@@ -580,6 +580,21 @@ input[type="number"]{-moz-appearance:textfield}
 .order-modal-total{display:flex;justify-content:space-between;padding-top:14px;font-weight:700;font-size:14px;color:var(--yellow)}
 .order-row{cursor:pointer}
 .order-row:hover td{background:rgba(240,232,112,0.05)}
+
+/* ── CONSUMOS ── */
+.cons-period-btn{
+  padding:6px 14px;border-radius:8px;border:1px solid #333;
+  background:transparent;color:var(--gray);font-size:13px;transition:all .15s;
+}
+.cons-period-btn:hover,.cons-period-btn.active{border-color:var(--yellow);color:var(--yellow);background:rgba(240,232,112,.08)}
+.cons-card{
+  background:var(--bg3);border:1px solid #333;border-radius:12px;
+  padding:16px 12px;text-align:center;
+}
+.cons-card-label{font-size:11px;color:var(--gray);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+.cons-card-value{font-size:20px;font-weight:700;color:var(--white)}
+.cons-card-sub{font-size:11px;color:var(--gray2);margin-top:4px}
+.cons-card-cost{font-size:12px;color:var(--green2);margin-top:4px}
 </style>
 </head>
 <body>
@@ -609,6 +624,7 @@ input[type="number"]{-moz-appearance:textfield}
       <button class="tab-btn" data-tab="artigos">Catálogo</button>
       <button class="tab-btn" data-tab="insumos">Insumos</button>
       <button class="tab-btn" data-tab="fichas">Fichas <span class="badge hidden" id="fichaBadge">0</span></button>
+      <button class="tab-btn" data-tab="consumos">Consumos</button>
       <button class="tab-btn" data-tab="financas">Finanças</button>
     </nav>
     <button id="logoutBtn">Sair</button>
@@ -945,6 +961,32 @@ input[type="number"]{-moz-appearance:textfield}
       </div>
     </div>
   </div>
+
+  <!-- CONSUMOS -->
+  <div class="tab-content" id="tab-consumos" style="display:none">
+    <div class="fin-config-card">
+      <div class="fin-config-title">Consumos</div>
+      <div class="fin-config-sub">Insumos consumidos no período, calculados a partir das fichas técnicas × pedidos confirmados. Use para controlar estoque e planejar compras.</div>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:18px">
+        <button class="cons-period-btn active" id="consBtnHoje"   onclick="setConsPeriod('hoje')">Hoje</button>
+        <button class="cons-period-btn"        id="consBtnSemana" onclick="setConsPeriod('semana')">Esta semana</button>
+        <button class="cons-period-btn"        id="consBtnMes"    onclick="setConsPeriod('mes')">Este mês</button>
+        <button class="cons-period-btn"        id="consBtnCustom" onclick="setConsPeriod('custom')">Período</button>
+        <span id="consCustomRange" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
+          <input type="date" id="consFrom" style="background:var(--bg3);border:1px solid #333;border-radius:8px;color:var(--white);padding:6px 10px;font-size:13px;outline:none">
+          <span style="color:var(--gray)">até</span>
+          <input type="date" id="consTo"   style="background:var(--bg3);border:1px solid #333;border-radius:8px;color:var(--white);padding:6px 10px;font-size:13px;outline:none">
+          <button class="cons-period-btn active" onclick="loadConsumos()">Aplicar</button>
+        </span>
+      </div>
+
+      <div id="consBanner" style="margin-top:18px;min-height:20px"></div>
+      <div id="consCards"  style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:20px"></div>
+      <div id="consTable"  style="margin-top:28px"></div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -1114,6 +1156,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'artigos') initArtigos()
     if (tab === 'insumos') initInsumos()
     if (tab === 'fichas') initFichas()
+    if (tab === 'consumos') initConsumos()
     if (tab === 'financas') initFinancas()
     if (tab === 'manual') initManual()
     if (tab === 'detalhe') {
@@ -3253,6 +3296,242 @@ function closeOrderModal() {
   document.getElementById('orderModal').style.display = 'none'
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOrderModal() })
+
+// ── CONSUMOS ──
+let consPeriod = 'hoje'
+
+function setConsPeriod(p) {
+  consPeriod = p
+  ;[['Hoje','hoje'],['Semana','semana'],['Mes','mes'],['Custom','custom']].forEach(([k, val]) => {
+    const btn = document.getElementById('consBtn' + k)
+    if (btn) btn.classList.toggle('active', val === p)
+  })
+  const customRange = document.getElementById('consCustomRange')
+  if (customRange) customRange.style.display = p === 'custom' ? 'flex' : 'none'
+  if (p !== 'custom') loadConsumos()
+}
+
+function consSetDates() {
+  const now   = new Date()
+  const today = now.toISOString().split('T')[0]
+  const fromEl = document.getElementById('consFrom')
+  const toEl   = document.getElementById('consTo')
+  if (!fromEl || !toEl) return
+  toEl.value = today
+  if (consPeriod === 'hoje') {
+    fromEl.value = today
+  } else if (consPeriod === 'semana') {
+    const d = new Date(now); d.setDate(d.getDate() - 6)
+    fromEl.value = d.toISOString().split('T')[0]
+  } else if (consPeriod === 'mes') {
+    fromEl.value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+  }
+}
+
+async function initConsumos() {
+  consSetDates()
+  await loadConsumos()
+}
+
+async function loadConsumos() {
+  consSetDates()
+  const banner = document.getElementById('consBanner')
+  const cards  = document.getElementById('consCards')
+  const table  = document.getElementById('consTable')
+  banner.innerHTML = '<span style="color:#888;font-size:13px">Calculando consumos…</span>'
+  cards.innerHTML  = ''
+  table.innerHTML  = ''
+
+  try {
+    const fromStr = document.getElementById('consFrom').value
+    const toStr   = document.getElementById('consTo').value
+    if (!fromStr || !toStr) {
+      banner.innerHTML = '<span style="color:#F44336;font-size:13px">Selecione um período.</span>'
+      return
+    }
+
+    const from = startOfDay(new Date(fromStr + 'T00:00:00'))
+    const to   = endOfDay(new Date(toStr   + 'T00:00:00'))
+
+    const [ordSnap, prodSnap, insSnap, recSnap] = await Promise.all([
+      db.collection('orders')
+        .where('createdAt', '>=', firebase.firestore.Timestamp.fromDate(from))
+        .where('createdAt', '<=', firebase.firestore.Timestamp.fromDate(to))
+        .get(),
+      db.collection('products').get(),
+      db.collection('insumos').get(),
+      db.collection('recipes').get(),
+    ])
+
+    const allOrders       = ordSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const confirmedOrders = allOrders.filter(o => o.status === 'confirmed')
+
+    const prodBySku  = {}
+    const prodByName = {}
+    prodSnap.docs.forEach(d => {
+      const p = { id: d.id, ...d.data() }
+      if (p.sku)  prodBySku[p.sku] = p
+      if (p.name) prodByName[p.name.toLowerCase().trim()] = p
+    })
+
+    const insumoMap = {}
+    insSnap.docs.forEach(d => { insumoMap[d.id] = { id: d.id, ...d.data() } })
+
+    const fichaByProdId = {}
+    recSnap.docs.forEach(d => { fichaByProdId[d.id] = d.data() })
+
+    // Aggregate consumption
+    const agg = {}
+    confirmedOrders.forEach(order => {
+      ;(order.items || []).forEach(it => {
+        consResolveLines(it, prodBySku, prodByName, fichaByProdId).forEach(({ insumoId, qty }) => {
+          const ins = insumoMap[insumoId]
+          if (!ins) return
+          if (!agg[insumoId]) agg[insumoId] = {
+            sku: insumoId, name: ins.name, type: ins.type,
+            unit: ins.unit, costPerUnit: ins.costPerUnit || 0, qty: 0
+          }
+          agg[insumoId].qty += qty
+        })
+      })
+    })
+
+    renderConsumosBanner(banner, confirmedOrders.length, allOrders.length)
+    renderConsumoCards(cards, agg, confirmedOrders.length)
+    renderConsumoTable(table, agg)
+  } catch(e) {
+    banner.innerHTML = `<span style="color:#F44336;font-size:13px">Erro: ${e.message}</span>`
+    console.error('loadConsumos error:', e)
+  }
+}
+
+// Resolve an order item → [{insumoId, qty}] via fichas técnicas
+function consResolveLines(item, prodBySku, prodByName, fichaByProdId) {
+  const prod = (item.sku && prodBySku[item.sku])
+    || prodByName[(item.name || '').toLowerCase().trim()]
+  if (!prod) return []
+
+  if (prod.category === 'combos' && prod.components) {
+    return String(prod.components).split(' + ').flatMap(sku => {
+      const comp = prodBySku[sku.trim()]
+      if (!comp) return []
+      const ficha = fichaByProdId[comp.id]
+      if (!ficha || !ficha.lines) return []
+      return ficha.lines.map(l => ({ insumoId: l.insumoId, qty: l.qty * item.qty }))
+    })
+  }
+
+  const ficha = fichaByProdId[prod.id]
+  if (!ficha || !ficha.lines) return []
+  return ficha.lines.map(l => ({ insumoId: l.insumoId, qty: l.qty * item.qty }))
+}
+
+function renderConsumosBanner(el, confirmed, total) {
+  const other = total - confirmed
+  el.innerHTML = `<div style="display:flex;gap:20px;align-items:center;background:rgba(255,255,255,.04);border:1px solid #333;border-radius:10px;padding:12px 16px;flex-wrap:wrap;font-size:13px">
+    <span><strong style="color:var(--green2);font-size:16px">${confirmed}</strong> pedidos confirmados</span>
+    ${other > 0 ? `<span style="color:#888">${other} pendente/cancelado excluído</span>` : ''}
+    <span style="color:#888">Bolsas de papel: <strong style="color:var(--white)">${confirmed}</strong> (1 por pedido)</span>
+  </div>`
+}
+
+function fmtConsQty(qty, unit) {
+  if (unit === 'g'  && qty >= 1000) return { val: (qty / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }), unit: 'kg' }
+  if (unit === 'ml' && qty >= 1000) return { val: (qty / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }), unit: 'L'  }
+  const v = qty % 1 === 0 ? qty.toLocaleString('pt-BR') : qty.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+  return { val: v, unit: unit || '' }
+}
+
+function renderConsumoCards(el, agg, orderCount) {
+  const byType = {}
+  Object.values(agg).forEach(item => {
+    if (!byType[item.type]) byType[item.type] = { cost: 0, count: 0 }
+    byType[item.type].cost  += item.qty * (item.costPerUnit || 0)
+    byType[item.type].count += 1
+  })
+
+  const ICONS = { proteína:'🥩', vegetal:'🥦', carbohidrato:'🍚', condimento:'🧴', molho:'🥣', empaque:'📦', acomp:'🥟' }
+  let html = ''
+  INS_TYPE_ORDER.forEach(type => {
+    const g = byType[type]
+    if (!g) return
+    html += `<div class="cons-card">
+      <div class="cons-card-label">${ICONS[type] || '•'} ${INS_TYPE_LABELS[type] || type}</div>
+      <div class="cons-card-value">${fmtBRL(g.cost)}</div>
+      <div class="cons-card-sub">${g.count} insumo${g.count !== 1 ? 's' : ''}</div>
+    </div>`
+  })
+  html += `<div class="cons-card">
+    <div class="cons-card-label">🛍 Embalagem pedido</div>
+    <div class="cons-card-value">${orderCount}</div>
+    <div class="cons-card-sub">bolsa${orderCount !== 1 ? 's' : ''} de papel</div>
+  </div>`
+  el.innerHTML = html
+}
+
+function renderConsumoTable(el, agg) {
+  const items = Object.values(agg)
+  if (!items.length) {
+    el.innerHTML = '<div style="color:#555;text-align:center;padding:40px;font-size:13px">Nenhum pedido confirmado no período.</div>'
+    return
+  }
+
+  items.sort((a, b) => {
+    const ti = INS_TYPE_ORDER.indexOf(a.type) - INS_TYPE_ORDER.indexOf(b.type)
+    return ti !== 0 ? ti : (a.name || '').localeCompare(b.name || '')
+  })
+
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="color:var(--gray);border-bottom:1px solid #333">
+      <th style="text-align:left;padding:8px 6px">Insumo</th>
+      <th style="text-align:left;padding:8px 6px">Tipo</th>
+      <th style="text-align:right;padding:8px 6px">Quantidade</th>
+      <th style="text-align:right;padding:8px 6px">Custo total</th>
+    </tr></thead><tbody>`
+
+  let lastType = null
+  let typeCost = 0
+  let typeQtyByUnit = {}
+
+  const flushType = () => {
+    if (lastType === null) return
+    const qtySummary = Object.entries(typeQtyByUnit)
+      .map(([u, q]) => { const f = fmtConsQty(q, u); return f.val + ' ' + f.unit }).join(' · ')
+    html += `<tr style="border-top:1px solid #222;background:rgba(255,255,255,.03)">
+      <td colspan="2" style="padding:5px 6px;color:#888;font-size:11px">Subtotal ${INS_TYPE_LABELS[lastType] || lastType}</td>
+      <td style="text-align:right;padding:5px 6px;color:#888;font-size:11px">${qtySummary}</td>
+      <td style="text-align:right;padding:5px 6px;font-size:12px;color:var(--green2)">${fmtBRL(typeCost)}</td>
+    </tr>`
+    typeCost = 0; typeQtyByUnit = {}
+  }
+
+  items.forEach(item => {
+    if (item.type !== lastType) {
+      flushType()
+      lastType = item.type
+      html += `<tr><td colspan="4" style="padding:14px 6px 5px;font-size:11px;font-weight:700;color:var(--yellow);letter-spacing:.06em;text-transform:uppercase">${INS_TYPE_LABELS[item.type] || item.type}</td></tr>`
+    }
+    const fmt  = fmtConsQty(item.qty, item.unit)
+    const cost = item.qty * (item.costPerUnit || 0)
+    typeCost += cost
+    typeQtyByUnit[item.unit] = (typeQtyByUnit[item.unit] || 0) + item.qty
+    html += `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+      <td style="padding:7px 6px;color:var(--white)">${item.name || item.sku}</td>
+      <td style="padding:7px 6px;color:#888;font-size:12px">${INS_TYPE_LABELS[item.type] || item.type}</td>
+      <td style="text-align:right;padding:7px 6px">${fmt.val} <span style="color:#888;font-size:11px">${fmt.unit}</span></td>
+      <td style="text-align:right;padding:7px 6px;color:#aaa">${fmtBRL(cost)}</td>
+    </tr>`
+  })
+  flushType()
+
+  const grand = Object.values(agg).reduce((s, i) => s + i.qty * (i.costPerUnit || 0), 0)
+  html += `<tr style="border-top:2px solid #444;background:rgba(255,255,255,.03)">
+    <td colspan="3" style="padding:10px 6px;font-weight:700;color:var(--white);font-size:13px">TOTAL INSUMOS</td>
+    <td style="text-align:right;padding:10px 6px;font-weight:700;color:var(--green2);font-size:14px">${fmtBRL(grand)}</td>
+  </tr></tbody></table>`
+
+  el.innerHTML = html
+}
 </script>
 
 <div id="orderModal" class="order-modal-overlay" style="display:none"
