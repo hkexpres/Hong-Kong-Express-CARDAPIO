@@ -3408,6 +3408,9 @@ function setConsPeriod(p) {
 }
 
 function consSetDates() {
+  // Em modo "Período" (custom) respeitamos as datas que o usuário digitou —
+  // não sobrescrever com a data de hoje.
+  if (consPeriod === 'custom') return
   const now   = new Date()
   const today = now.toISOString().split('T')[0]
   const fromEl = document.getElementById('consFrom')
