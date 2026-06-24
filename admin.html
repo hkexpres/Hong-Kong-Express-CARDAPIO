@@ -591,6 +591,11 @@ input[type="number"]{-moz-appearance:textfield}
   background:var(--bg3);border:1px solid #333;border-radius:12px;
   padding:16px 12px;text-align:center;
 }
+.cons-card-total{
+  background:linear-gradient(160deg,rgba(240,232,112,0.12),rgba(240,232,112,0.03));
+  border-color:rgba(240,232,112,0.45);
+}
+.cons-card-total .cons-card-value{color:var(--yellow)}
 .cons-card-label{font-size:11px;color:var(--gray);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
 .cons-card-value{font-size:20px;font-weight:700;color:var(--white)}
 .cons-card-sub{font-size:11px;color:var(--gray2);margin-top:4px}
@@ -1363,7 +1368,7 @@ function buildDonut(canvasId, centerId, legendId, orders) {
 
   centerEl.innerHTML = `
     <div class="donut-center-val">${fmtBRL(totalBRL)}</div>
-    <div class="donut-center-sub">${totalPlatos} platos</div>
+    <div class="donut-center-sub">${totalPlatos} platos · ${orders.length} ped.</div>
   `
 
   legendEl.innerHTML = sorted.map(([g, v], i) => `
@@ -3535,8 +3540,10 @@ async function loadConsumos() {
       agg[ins.id].qty += confirmedOrders.length
     })
 
-    renderConsumosBanner(banner, confirmedOrders.length, allOrders.length)
-    renderConsumoCards(cards, agg, confirmedOrders.length)
+    const totalPlatos = confirmedOrders.reduce((s, o) => s + countPorcoes(o.items), 0)
+
+    renderConsumosBanner(banner, confirmedOrders.length, allOrders.length, totalPlatos)
+    renderConsumoCards(cards, agg, confirmedOrders.length, totalPlatos)
     renderConsumoTable(table, agg)
   } catch(e) {
     banner.innerHTML = `<span style="color:#F44336;font-size:13px">Erro: ${e.message}</span>`
@@ -3565,10 +3572,11 @@ function consResolveLines(item, prodBySku, prodByName, fichaByProdId) {
   return ficha.lines.map(l => ({ insumoId: l.insumoId, qty: l.qty * item.qty }))
 }
 
-function renderConsumosBanner(el, confirmed, total) {
+function renderConsumosBanner(el, confirmed, total, totalPlatos) {
   const other = total - confirmed
   el.innerHTML = `<div style="display:flex;gap:20px;align-items:center;background:rgba(255,255,255,.04);border:1px solid #333;border-radius:10px;padding:12px 16px;flex-wrap:wrap;font-size:13px">
     <span><strong style="color:var(--green2);font-size:16px">${confirmed}</strong> pedidos confirmados</span>
+    <span><strong style="color:var(--white);font-size:16px">${totalPlatos ?? 0}</strong> platos</span>
     ${other > 0 ? `<span style="color:#888">${other} pendente/cancelado excluído</span>` : ''}
     <span style="color:#888">Bolsas de papel: <strong style="color:var(--white)">${confirmed}</strong> (1 por pedido)</span>
   </div>`
@@ -3587,7 +3595,7 @@ const CONS_TYPE_COLORS = {
 }
 let consDonutChart = null
 
-function renderConsumoCards(el, agg, orderCount) {
+function renderConsumoCards(el, agg, orderCount, totalPlatos) {
   const byType = {}
   Object.values(agg).forEach(item => {
     if (!byType[item.type]) byType[item.type] = { cost: 0, count: 0 }
@@ -3596,8 +3604,20 @@ function renderConsumoCards(el, agg, orderCount) {
   })
 
   const grandTotal = Object.values(byType).reduce((s, g) => s + g.cost, 0)
+  const perOrder   = orderCount > 0 ? grandTotal / orderCount : 0
+  const perPlato   = totalPlatos > 0 ? grandTotal / totalPlatos : 0
   const ICONS = { proteína:'🥩', vegetal:'🥦', carbohidrato:'🍚', condimento:'🧴', molho:'🥣', empaque:'📦', acomp:'🥟' }
-  let html = ''
+  let html = `
+    <div class="cons-card cons-card-total">
+      <div class="cons-card-label">💰 Custo total</div>
+      <div class="cons-card-value">${fmtBRL(grandTotal)}</div>
+      <div class="cons-card-sub">${orderCount} pedido${orderCount !== 1 ? 's' : ''} · ${totalPlatos ?? 0} platos</div>
+    </div>
+    <div class="cons-card cons-card-total">
+      <div class="cons-card-label">🧾 Custo / pedido</div>
+      <div class="cons-card-value">${fmtBRL(perOrder)}</div>
+      <div class="cons-card-sub">${fmtBRL(perPlato)} / plato</div>
+    </div>`
   INS_TYPE_ORDER.forEach(type => {
     const g = byType[type]
     if (!g) return
