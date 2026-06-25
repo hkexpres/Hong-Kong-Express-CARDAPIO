@@ -147,7 +147,8 @@ body{background:var(--negro);color:var(--blanco);font-family:'Inter',sans-serif;
   padding:6px 10px;min-width:72px;flex:1;
 }
 .pchip-label{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;color:var(--blanco);line-height:1.2}
-.pchip-price{font-family:'Montserrat',sans-serif;font-weight:900;font-size:16px;color:var(--amarillo);line-height:1.3;text-shadow:0 0 6px rgba(255,214,0,0.35)}
+.pchip-cut{font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.55);line-height:1.2;margin-top:1px;letter-spacing:.02em}
+.pchip-price{font-family:'Montserrat',sans-serif;font-weight:900;font-size:16px;color:var(--amarillo);line-height:1.3;text-shadow:0 0 6px rgba(255,214,0,0.35);margin-top:2px}
 
 /* ── COMBOS ── */
 .combo-card{
@@ -876,10 +877,10 @@ body.has-cart{padding-bottom:78px}
     <p class="plate-copy">Arroz frito no wok com ovo, cenoura, cebola branca, repolho roxo e cebolinha 🥢</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho Mãe HKE · 20ml</div>
     <div class="protein-row">
-      <div class="pchip" data-sku="CF-FRG"><span class="pchip-label">Frango</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="CF-PRC"><span class="pchip-label">Porco</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="CF-CRN"><span class="pchip-label">Carne</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="CF-MST"><span class="pchip-label">Misto</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="CF-FRG"><span class="pchip-label">Frango</span><span class="pchip-cut">filé</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="CF-PRC"><span class="pchip-label">Porco</span><span class="pchip-cut">lombo suíno</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="CF-CRN"><span class="pchip-label">Carne</span><span class="pchip-cut">coxa mole</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="CF-MST"><span class="pchip-label">Misto</span><span class="pchip-cut">carne + frango</span><span class="pchip-price">R$ --</span></div>
     </div>
   </div>
 
@@ -892,10 +893,10 @@ body.has-cart{padding-bottom:78px}
     <p class="plate-copy">Macarrão de sêmola salteado no wok com cenoura, cebola, pimentão verde e repolho roxo 🥢</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho Mãe HKE · 20ml</div>
     <div class="protein-row">
-      <div class="pchip" data-sku="CM-FRG"><span class="pchip-label">Frango</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="CM-PRC"><span class="pchip-label">Porco</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="CM-CRN"><span class="pchip-label">Carne</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="CM-MST"><span class="pchip-label">Misto</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="CM-FRG"><span class="pchip-label">Frango</span><span class="pchip-cut">filé</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="CM-PRC"><span class="pchip-label">Porco</span><span class="pchip-cut">lombo suíno</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="CM-CRN"><span class="pchip-label">Carne</span><span class="pchip-cut">coxa mole</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="CM-MST"><span class="pchip-label">Misto</span><span class="pchip-cut">carne + frango</span><span class="pchip-price">R$ --</span></div>
     </div>
   </div>
 
@@ -945,7 +946,7 @@ body.has-cart{padding-bottom:78px}
     <p class="plate-copy">Carne no wok em fogo alto com cogumelo shiitake, cebola e cebolinha. Doce + umami intenso. Topping de gergelim bicolor. Acompanha arroz branco tostado no wok.</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho Teriyaki · 60ml</div>
     <div class="protein-row">
-      <div class="pchip" data-sku="TRY-CRN" style="background:#8B4513"><span class="pchip-label">Carne</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="TRY-CRN" style="background:#8B4513"><span class="pchip-label">Carne</span><span class="pchip-cut">coxa mole</span><span class="pchip-price">R$ --</span></div>
     </div>
   </div>
 
@@ -958,9 +959,9 @@ body.has-cart{padding-bottom:78px}
     <p class="plate-copy">Doce + picante + wok em fogo alto. Pimentão vermelho, cebola e nosso molho secreto. Topping de gergelim bicolor. Acompanha macarrão de sêmola salteado no wok.</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho Agripicante · 60ml</div>
     <div class="protein-row">
-      <div class="pchip" data-sku="AGP-FRG"><span class="pchip-label">Frango</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="AGP-PRC"><span class="pchip-label">Porco</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="AGP-MST"><span class="pchip-label">Misto</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="AGP-FRG"><span class="pchip-label">Frango</span><span class="pchip-cut">filé</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="AGP-PRC"><span class="pchip-label">Porco</span><span class="pchip-cut">lombo suíno</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="AGP-MST"><span class="pchip-label">Misto</span><span class="pchip-cut">carne + frango</span><span class="pchip-price">R$ --</span></div>
     </div>
   </div>
 
@@ -973,9 +974,9 @@ body.has-cart{padding-bottom:78px}
     <p class="plate-copy">Salgado + levemente picante + crocante das castanhas de caju. Pimentões e cebola no wok em fogo alto. Topping de gergelim bicolor. Acompanha arroz branco tostado no wok.</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho Kung Pao · 70ml</div>
     <div class="protein-row">
-      <div class="pchip" data-sku="KP-FRG"><span class="pchip-label">Frango</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="KP-CRN"><span class="pchip-label">Carne</span><span class="pchip-price">R$ --</span></div>
-      <div class="pchip" data-sku="KP-MST"><span class="pchip-label">Misto</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="KP-FRG"><span class="pchip-label">Frango</span><span class="pchip-cut">filé</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="KP-CRN"><span class="pchip-label">Carne</span><span class="pchip-cut">coxa mole</span><span class="pchip-price">R$ --</span></div>
+      <div class="pchip" data-sku="KP-MST"><span class="pchip-label">Misto</span><span class="pchip-cut">carne + frango</span><span class="pchip-price">R$ --</span></div>
     </div>
   </div>
 </div>
