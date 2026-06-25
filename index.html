@@ -147,7 +147,7 @@ body{background:var(--negro);color:var(--blanco);font-family:'Inter',sans-serif;
   padding:6px 10px;min-width:72px;flex:1;
 }
 .pchip-label{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;color:var(--blanco);line-height:1.2}
-.pchip-cut{font-family:'Inter',sans-serif;font-size:9px;color:rgba(255,255,255,0.55);line-height:1.2;margin-top:1px;letter-spacing:.02em}
+.pchip-cut{font-family:'Inter',sans-serif;font-style:italic;font-size:10.5px;font-weight:600;color:#FFE08A;opacity:.92;line-height:1.2;margin-top:2px;letter-spacing:.01em}
 .pchip-price{font-family:'Montserrat',sans-serif;font-weight:900;font-size:16px;color:var(--amarillo);line-height:1.3;text-shadow:0 0 6px rgba(255,214,0,0.35);margin-top:2px}
 
 /* ── COMBOS ── */
@@ -259,16 +259,37 @@ body{background:var(--negro);color:var(--blanco);font-family:'Inter',sans-serif;
 }
 .hero-scroll-hint{
   text-align:center;
-  padding:14px 0;
-  font-family:'Montserrat',sans-serif;
-  font-size:9px;
-  font-weight:700;
-  letter-spacing:0.22em;
-  text-transform:uppercase;
-  color:rgba(144,64,64,0.7);
+  padding:16px 14px 18px;
   position:relative;
   z-index:2;
-  border-bottom:1px solid rgba(144,64,64,0.15);
+  border-bottom:1px solid rgba(240,232,112,0.18);
+  background:linear-gradient(180deg,rgba(240,232,112,0.06),transparent);
+}
+.hero-scroll-hint .hsh-main{
+  font-family:'Montserrat',sans-serif;
+  font-size:13px;
+  font-weight:800;
+  letter-spacing:0.04em;
+  color:var(--amarillo);
+  text-shadow:0 0 10px rgba(255,214,0,0.3);
+}
+.hero-scroll-hint .hsh-sub{
+  font-family:'Inter',sans-serif;
+  font-size:11px;
+  font-weight:500;
+  color:rgba(255,255,255,0.7);
+  margin-top:3px;
+}
+.hero-scroll-hint .hsh-arrow{
+  display:inline-block;
+  font-size:16px;
+  color:var(--amarillo);
+  margin-top:5px;
+  animation:hshBounce 1.6s ease-in-out infinite;
+}
+@keyframes hshBounce{
+  0%,100%{transform:translateY(0);opacity:.8}
+  50%{transform:translateY(5px);opacity:1}
 }
 .hero-cards{
   display:flex;
@@ -688,7 +709,11 @@ body.has-cart{padding-bottom:78px}
 <!-- HERO PAGE -->
 <div class="hero-page reveal">
 
-  <div class="hero-scroll-hint">&#9660; Cardápio completo abaixo &#9660;</div>
+  <div class="hero-scroll-hint">
+    <div class="hsh-main">Role para baixo e monte seu pedido</div>
+    <div class="hsh-sub">Escolha os pratos e toque no <strong style="color:var(--amarillo)">+</strong> — é só pedir por aqui</div>
+    <div class="hsh-arrow">&#9660;</div>
+  </div>
 
   <div class="hero-cards">
 
@@ -891,7 +916,7 @@ body.has-cart{padding-bottom:78px}
       <span class="ptag ptag-red">180g de proteína</span>
     </div>
     <p class="plate-copy">Macarrão de sêmola salteado no wok com cenoura, cebola, pimentão verde e repolho roxo 🥢</p>
-    <div class="plate-salsa"><span class="dot">◆</span> Molho Mãe HKE · 20ml</div>
+    <div class="plate-salsa"><span class="dot">◆</span> Molho Mãe HKE · 60ml</div>
     <div class="protein-row">
       <div class="pchip" data-sku="CM-FRG"><span class="pchip-label">Frango</span><span class="pchip-cut">filé</span><span class="pchip-price">R$ --</span></div>
       <div class="pchip" data-sku="CM-PRC"><span class="pchip-label">Porco</span><span class="pchip-cut">lombo suíno</span><span class="pchip-price">R$ --</span></div>
