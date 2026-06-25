@@ -2906,7 +2906,7 @@ function renderFichaMissingBanner() {
   const missing = fichaMissingProducts()
   updateFichaBadge(missing.length)
   if (!missing.length) {
-    el.innerHTML = '<div class="ficha-banner ok">✓ Todos os pratos do catálogo já têm ficha técnica.</div>'
+    el.innerHTML = '<div class="ficha-banner ok">✓ Todos os pratos têm ficha técnica. Selecione um prato no menu acima para editar. Para criar uma nova ficha, adicione o prato no Catálogo primeiro — ele aparecerá aqui com ○.</div>'
     return
   }
   el.innerHTML = `<div class="ficha-banner warn">⚠ ${missing.length} prato(s) sem ficha técnica — clique para carregar:<br>` +
