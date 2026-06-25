@@ -3581,7 +3581,7 @@ async function loadConsumos() {
 
     const totalPlatos = confirmedOrders.reduce((s, o) => s + countPorcoes(o.items), 0)
 
-    renderConsumosBanner(banner, confirmedOrders.length, pendingOrders.length, cancelledOrders.length, totalPlatos)
+    renderConsumosBanner(banner, confirmedOrders.length, pendingOrders.length, cancelledOrders.length, totalPlatos, fromStr, toStr)
     renderConsumoCards(cards, agg, confirmedOrders.length, totalPlatos)
     renderConsumoTable(table, agg)
   } catch(e) {
@@ -3727,11 +3727,23 @@ function closeFinModal() {
   if (el) el.style.display = 'none'
 }
 
-function renderConsumosBanner(el, confirmed, pending, cancelled, totalPlatos) {
+function fmtDateBR(str) {
+  if (!str) return ''
+  const [y, m, d] = str.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function renderConsumosBanner(el, confirmed, pending, cancelled, totalPlatos, fromStr, toStr) {
   const parts = []
   if (pending   > 0) parts.push(`<span style="color:var(--yellow)">${pending} pendente${pending > 1 ? 's' : ''}</span>`)
   if (cancelled > 0) parts.push(`<span style="color:#F44336">${cancelled} cancelado${cancelled > 1 ? 's' : ''}</span>`)
+  const rangeLabel = (fromStr && toStr)
+    ? (fromStr === toStr
+        ? `<span style="color:var(--yellow);font-weight:600">📅 ${fmtDateBR(fromStr)}</span>`
+        : `<span style="color:var(--yellow);font-weight:600">📅 ${fmtDateBR(fromStr)} → ${fmtDateBR(toStr)}</span>`)
+    : ''
   el.innerHTML = `<div style="display:flex;gap:20px;align-items:center;background:rgba(255,255,255,.04);border:1px solid #333;border-radius:10px;padding:12px 16px;flex-wrap:wrap;font-size:13px">
+    ${rangeLabel}
     <span><strong style="color:var(--green2);font-size:16px">${confirmed}</strong> pedidos confirmados</span>
     <span><strong style="color:var(--white);font-size:16px">${totalPlatos ?? 0}</strong> platos</span>
     ${parts.length > 0 ? `<span style="color:#888">excluídos: ${parts.join(' · ')}</span>` : ''}
