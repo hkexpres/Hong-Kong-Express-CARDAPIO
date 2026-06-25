@@ -291,6 +291,38 @@ body{background:var(--negro);color:var(--blanco);font-family:'Inter',sans-serif;
   0%,100%{transform:translateY(0);opacity:.8}
   50%{transform:translateY(5px);opacity:1}
 }
+/* Píldora flotante que acompanha o scroll até chegar no cardápio */
+.scroll-pill{
+  position:fixed;
+  left:50%;
+  bottom:22px;
+  transform:translateX(-50%) translateY(16px);
+  z-index:90;
+  display:flex;align-items:center;gap:8px;
+  padding:10px 16px;
+  border-radius:999px;
+  background:rgba(20,18,6,0.92);
+  border:1px solid rgba(240,232,112,0.55);
+  box-shadow:0 6px 22px rgba(0,0,0,0.55),0 0 16px rgba(240,232,112,0.12);
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+  font-family:'Montserrat',sans-serif;
+  font-size:12.5px;
+  font-weight:700;
+  color:var(--amarillo);
+  white-space:nowrap;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .35s ease,transform .35s ease;
+}
+.scroll-pill.show{
+  opacity:1;
+  transform:translateX(-50%) translateY(0);
+}
+.scroll-pill .sp-arrow{
+  font-size:13px;
+  animation:hshBounce 1.6s ease-in-out infinite;
+}
 .hero-cards{
   display:flex;
   flex-direction:column;
@@ -848,7 +880,7 @@ body.has-cart{padding-bottom:78px}
 
 
 <!-- BEST SELLERS -->
-<div class="bloque reveal">
+<div class="bloque reveal" id="menu-start">
   <div class="section-label">
     <div class="ln"></div><h2>🔥 Mais Pedidos</h2><div class="ln r"></div>
   </div>
@@ -1227,6 +1259,11 @@ body.has-cart{padding-bottom:78px}
 </div>
 
 <!-- CART PANEL -->
+<div class="scroll-pill" id="scrollPill" aria-hidden="true">
+  <span>Continue rolando para escolher e pedir</span>
+  <span class="sp-arrow">&#9660;</span>
+</div>
+
 <div class="cart-fab" id="cartFab" aria-hidden="true">
   <div class="cart-bar" id="cartBar">
     <div class="cart-bar-left">
@@ -1537,6 +1574,33 @@ document.getElementById('cartClearBtn').addEventListener('click', e=>{
   e.stopPropagation()
   if(confirm('Limpar o pedido?')) clearCart()
 })
+
+// ── DICA FLUTUANTE: acompanha o scroll do hero até o cardápio ──
+;(function(){
+  const pill     = document.getElementById('scrollPill')
+  const heroHint = document.querySelector('.hero-scroll-hint')
+  const menu     = document.getElementById('menu-start')
+  if(!pill || !heroHint || !menu) return
+
+  let pastHero = false   // já rolou além do banner de intro
+  let atMenu   = false   // chegou na seção de pratos (esconde de vez)
+
+  const refresh = ()=>{
+    pill.classList.toggle('show', pastHero && !atMenu)
+  }
+
+  // some quando o banner de intro sai da tela; volta se rolar pra cima
+  new IntersectionObserver(([e])=>{
+    pastHero = !e.isIntersecting
+    refresh()
+  }, {threshold:0}).observe(heroHint)
+
+  // ao alcançar os pratos, esconde de vez
+  new IntersectionObserver(([e])=>{
+    if(e.isIntersecting){ atMenu = true; refresh() }
+  }, {rootMargin:'0px 0px -25% 0px', threshold:0}).observe(menu)
+})()
+
 // ── FIREBASE ──
 firebase.initializeApp({
   apiKey: 'AIzaSyAdPXyBm9fAD7OgDYl2qD7Yhz4JlXq0JOs',
