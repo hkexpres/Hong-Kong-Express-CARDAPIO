@@ -589,15 +589,15 @@ input[type="number"]{-moz-appearance:textfield}
 .cons-period-btn:hover,.cons-period-btn.active{border-color:var(--yellow);color:var(--yellow);background:rgba(240,232,112,.08)}
 .cons-card{
   background:var(--bg3);border:1px solid #333;border-radius:12px;
-  padding:16px 12px;text-align:center;
+  padding:14px 10px;text-align:center;
 }
 .cons-card-total{
   background:linear-gradient(160deg,rgba(240,232,112,0.12),rgba(240,232,112,0.03));
   border-color:rgba(240,232,112,0.45);
 }
 .cons-card-total .cons-card-value{color:var(--yellow)}
-.cons-card-label{font-size:11px;color:var(--gray);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
-.cons-card-value{font-size:20px;font-weight:700;color:var(--white)}
+.cons-card-label{font-size:10px;color:var(--gray);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cons-card-value{font-size:17px;font-weight:700;color:var(--white);white-space:nowrap}
 .cons-card-sub{font-size:11px;color:var(--gray2);margin-top:4px}
 .cons-card-cost{font-size:12px;color:var(--green2);margin-top:4px}
 .cons-card-pct{font-size:13px;font-weight:700;color:var(--yellow);margin-top:2px}
@@ -1018,7 +1018,7 @@ input[type="number"]{-moz-appearance:textfield}
 
       <div id="consBanner" style="margin-top:18px;min-height:20px"></div>
       <div id="consKpiBanner"></div>
-      <div id="consCards"  style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:10px"></div>
+      <div id="consCards"  style="display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:10px;margin-top:10px"></div>
       <div id="consDonutWrap" style="display:none;margin-top:20px">
         <div style="position:relative;height:210px;width:100%">
           <canvas id="consDonut"></canvas>
