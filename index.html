@@ -146,9 +146,9 @@ body{background:var(--negro);color:var(--blanco);font-family:'Inter',sans-serif;
   background:var(--rojo);border-radius:9px;
   padding:6px 10px;min-width:72px;flex:1;
 }
-.pchip-label{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;color:var(--blanco);line-height:1.2}
+.pchip-label{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;color:var(--blanco);line-height:1.2;padding-right:18px}
 .pchip-cut{font-family:'Inter',sans-serif;font-style:italic;font-size:10.5px;font-weight:600;color:#FFE08A;opacity:.92;line-height:1.2;margin-top:2px;letter-spacing:.01em}
-.pchip-price{font-family:'Montserrat',sans-serif;font-weight:900;font-size:16px;color:var(--amarillo);line-height:1.3;text-shadow:0 0 6px rgba(255,214,0,0.35);margin-top:2px}
+.pchip-price{font-family:'Montserrat',sans-serif;font-weight:900;font-size:16px;color:var(--amarillo);line-height:1.3;text-shadow:0 0 6px rgba(255,214,0,0.35);margin-top:2px;white-space:nowrap}
 
 /* ── COMBOS ── */
 .combo-card{
@@ -1582,23 +1582,32 @@ document.getElementById('cartClearBtn').addEventListener('click', e=>{
   const menu     = document.getElementById('menu-start')
   if(!pill || !heroHint || !menu) return
 
-  let pastHero = false   // já rolou além do banner de intro
-  let atMenu   = false   // chegou na seção de pratos (esconde de vez)
+  let pastHero = false
+  let atMenu   = false
 
-  const refresh = ()=>{
-    pill.classList.toggle('show', pastHero && !atMenu)
+  const refresh = () => {
+    const show = pastHero && !atMenu
+    pill.classList.toggle('show', show)
+    pill.style.pointerEvents = show ? 'auto' : 'none'
   }
 
-  // some quando o banner de intro sai da tela; volta se rolar pra cima
-  new IntersectionObserver(([e])=>{
+  // clique na pílula: rola suave até o cardápio
+  pill.addEventListener('click', () => {
+    menu.scrollIntoView({behavior:'smooth', block:'start'})
+  })
+
+  // some quando o banner de intro está visível; volta ao rolar para cima
+  new IntersectionObserver(([e]) => {
     pastHero = !e.isIntersecting
     refresh()
-  }, {threshold:0}).observe(heroHint)
+  }, {threshold: 0}).observe(heroHint)
 
-  // ao alcançar os pratos, esconde de vez
-  new IntersectionObserver(([e])=>{
-    if(e.isIntersecting){ atMenu = true; refresh() }
-  }, {rootMargin:'0px 0px -25% 0px', threshold:0}).observe(menu)
+  // some quando o menu entra na tela; volta se rolar para cima novamente
+  new IntersectionObserver(([e]) => {
+    // boundingClientRect.top < 0 = já passamos o menu rolando para baixo
+    atMenu = e.isIntersecting || e.boundingClientRect.top <= 0
+    refresh()
+  }, {threshold: 0}).observe(menu)
 })()
 
 // ── FIREBASE ──
