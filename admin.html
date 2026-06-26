@@ -808,6 +808,22 @@ input[type="number"]{-moz-appearance:textfield}
     </div>
 
     <div id="financasContent"></div>
+
+    <!-- CUSTOS FIXOS MENSAIS -->
+    <div class="fin-config-card" id="custosFixosCard" style="margin-top:24px">
+      <div class="fin-config-title">Custos Fixos Mensais</div>
+      <div class="fin-config-sub">Aluguel, salários, luz, gás, água, internet, contador… Alimentam o cálculo do <strong>ponto de equilíbrio</strong> (quantos pratos/mês cobrem os custos fixos). Enquanto não houver itens, o custo fixo é R$ 0 e o ponto de equilíbrio não aparece.</div>
+      <div id="custosFixosBody"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <input type="text" id="cfNewName" class="art-inp" placeholder="Conceito (ex.: Aluguel)" style="flex:1;min-width:160px">
+        <input type="number" id="cfNewValue" class="art-inp" placeholder="R$ / mês" min="0" step="0.01" style="width:140px">
+        <button class="art-btn art-btn-primary" onclick="addCustoFixo()">+ Adicionar</button>
+      </div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
+        <button class="art-btn art-btn-primary" id="cfSaveBtn" onclick="saveCustosFixos()">Salvar custos fixos</button>
+        <span class="fin-saved-msg" id="cfSavedMsg">✓ Salvo</span>
+      </div>
+    </div>
   </div>
 
   <!-- ARTIGOS -->
@@ -1320,8 +1336,8 @@ function initFinancas() {
     document.getElementById('finFrom').value = firstDay.toISOString().split('T')[0]
   if (!document.getElementById('finTo').value)
     document.getElementById('finTo').value = now.toISOString().split('T')[0]
-  // Mostra o período corrente por default ao abrir a aba, sem precisar clicar Filtrar
-  loadFinancas()
+  // Carrega custos fixos (p/ ponto de equilíbrio) e mostra o período corrente por default
+  loadCustosFixos().finally(() => loadFinancas())
 }
 
 // ── DASHBOARD ──
@@ -2216,6 +2232,86 @@ function marginBarFill(pct) {
   </div>`
 }
 
+// ── CUSTOS FIXOS MENSAIS (config p/ ponto de equilíbrio) ──
+let custosFixosItems = []   // [{name, value}]
+let custosFixosTotal = 0
+
+async function loadCustosFixos() {
+  try {
+    const doc = await db.collection('config').doc('custosFixos').get()
+    custosFixosItems = (doc.exists && Array.isArray(doc.data().items))
+      ? doc.data().items.map(i => ({ name: i.name || '', value: Number(i.value) || 0 }))
+      : []
+  } catch (e) { custosFixosItems = [] }
+  custosFixosTotal = custosFixosItems.reduce((a, i) => a + (Number(i.value) || 0), 0)
+  renderCustosEditor()
+}
+
+function renderCustosEditor() {
+  const body = document.getElementById('custosFixosBody')
+  if (!body) return
+  if (!custosFixosItems.length) {
+    body.innerHTML = '<div style="color:#555;padding:14px 0;font-size:13px">Nenhum custo fixo cadastrado. Enquanto isso, o custo fixo é R$ 0 e o ponto de equilíbrio fica oculto.</div>'
+    return
+  }
+  const total = custosFixosItems.reduce((a, i) => a + (Number(i.value) || 0), 0)
+  body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="color:var(--gray);font-size:11px">
+      <th style="text-align:left;padding:6px 8px">Conceito</th>
+      <th style="text-align:right;padding:6px 8px">R$ / mês</th><th style="width:40px"></th>
+    </tr></thead><tbody>
+    ${custosFixosItems.map((it, i) => `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
+      <td style="padding:6px 8px"><input class="art-inp" value="${(it.name || '').replace(/"/g, '&quot;')}" onchange="updateCustoFixo(${i},'name',this.value)" style="width:100%"></td>
+      <td style="padding:6px 8px;text-align:right"><input class="art-inp" type="number" min="0" step="0.01" value="${it.value}" onchange="updateCustoFixo(${i},'value',this.value)" style="width:120px;text-align:right"></td>
+      <td style="padding:6px 8px;text-align:center"><button class="art-btn art-btn-danger" style="padding:4px 9px;font-size:12px" onclick="removeCustoFixo(${i})">✕</button></td>
+    </tr>`).join('')}
+    </tbody>
+    <tfoot><tr style="border-top:2px solid #444">
+      <td style="padding:9px 8px;font-weight:700">Total mensal</td>
+      <td style="padding:9px 8px;text-align:right;font-weight:700;color:var(--yellow)">${fmtBRL(total)}</td><td></td>
+    </tr></tfoot>
+  </table>`
+}
+
+function addCustoFixo() {
+  const nameEl = document.getElementById('cfNewName')
+  const valEl  = document.getElementById('cfNewValue')
+  const name = nameEl.value.trim()
+  if (!name) { nameEl.focus(); return }
+  custosFixosItems.push({ name, value: parseFloat(valEl.value) || 0 })
+  nameEl.value = ''; valEl.value = ''
+  renderCustosEditor()
+}
+
+function updateCustoFixo(i, field, val) {
+  if (!custosFixosItems[i]) return
+  custosFixosItems[i][field] = field === 'value' ? (parseFloat(val) || 0) : val
+  renderCustosEditor()
+}
+
+function removeCustoFixo(i) {
+  custosFixosItems.splice(i, 1)
+  renderCustosEditor()
+}
+
+async function saveCustosFixos() {
+  const btn = document.getElementById('cfSaveBtn')
+  btn.disabled = true; btn.textContent = 'Salvando…'
+  try {
+    const items = custosFixosItems
+      .filter(i => (i.name || '').trim())
+      .map(i => ({ name: i.name.trim(), value: Number(i.value) || 0 }))
+    await db.collection('config').doc('custosFixos').set({
+      items, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
+    custosFixosItems = items
+    custosFixosTotal = items.reduce((a, i) => a + i.value, 0)
+    const msg = document.getElementById('cfSavedMsg')
+    if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500) }
+    loadFinancas()  // recalcula o ponto de equilíbrio com os novos custos
+  } catch (e) { alert('Erro ao salvar custos fixos: ' + e.message) }
+  finally { btn.disabled = false; btn.textContent = 'Salvar custos fixos' }
+}
+
 async function loadFinancas() {
   const from = document.getElementById('finFrom').value
   const to   = document.getElementById('finTo').value
@@ -2356,6 +2452,14 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   const lucroPorPedido = nPedidos   > 0 ? totLucro   / nPedidos        : 0
   const pratosPorPedido= nPedidos   > 0 ? qtyPratos  / nPedidos        : 0
 
+  // ── Ponto de equilíbrio (só quando há custos fixos cadastrados) ──
+  const precoMedioPrato = qtyPratos > 0 ? pr.receita / qtyPratos : 0
+  const breakEvenPratos = (custosFixosTotal > 0 && lucroPorPrato > 0)
+    ? Math.ceil(custosFixosTotal / lucroPorPrato) : null
+  const faltamPratos    = breakEvenPratos != null ? Math.max(0, breakEvenPratos - qtyPratos) : 0
+  const progressoBE     = breakEvenPratos ? Math.min(100, qtyPratos / breakEvenPratos * 100) : 0
+  const lucroLiquido    = totLucro - custosFixosTotal
+
   // ── Monthly chart data ──
   const monthMap = {}
   rows.forEach(r => {
@@ -2483,6 +2587,34 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
         <div class="fin-kpi-sub">${fmtBRL(lucroPorPedido)} de lucro/pedido</div>
       </div>
     </div>
+    ${custosFixosTotal > 0 ? `
+    <div class="fin-section-title" style="margin-top:8px">Ponto de Equilíbrio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· custos fixos vs. pratos</span></div>
+    <div class="fin-kpi-row" style="grid-template-columns:repeat(3,1fr)">
+      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)">
+        <div class="fin-kpi-label">Custos fixos mensais</div>
+        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(custosFixosTotal)}</div>
+        <div class="fin-kpi-sub">${custosFixosItems.length} ${custosFixosItems.length === 1 ? 'item' : 'itens'}</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)">
+        <div class="fin-kpi-label">Equilíbrio: pratos / mês</div>
+        <div class="fin-kpi-val yellow">${breakEvenPratos != null ? breakEvenPratos : '—'}</div>
+        <div class="fin-kpi-sub">${breakEvenPratos != null ? '≈ ' + fmtBRL(breakEvenPratos * precoMedioPrato) + ' em pratos' : 'lucro/prato ≤ 0 — reveja custos'}</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)">
+        <div class="fin-kpi-label">Resultado do período</div>
+        <div class="fin-kpi-val ${lucroLiquido >= 0 ? 'green' : 'red'}">${fmtBRL(lucroLiquido)}</div>
+        <div class="fin-kpi-sub">lucro bruto − custos fixos (1 mês)</div>
+      </div>
+    </div>
+    ${breakEvenPratos != null ? `
+    <div style="margin:-6px 0 22px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray);margin-bottom:6px">
+        <span>${qtyPratos} pratos vendidos no período</span>
+        <span style="color:${faltamPratos > 0 ? 'var(--yellow)' : 'var(--green2)'}">${faltamPratos > 0 ? 'faltam ' + faltamPratos + ' p/ equilíbrio' : '✓ equilíbrio atingido'}</span>
+      </div>
+      <div class="margin-bar-bg" style="height:9px"><div class="margin-bar-fill" style="width:${progressoBE}%;height:9px;background:${progressoBE >= 100 ? 'var(--green2)' : 'var(--yellow)'}"></div></div>
+    </div>` : ''}
+    ` : ''}
 
     <div class="fin-section-title">Rentabilidade por Categoria</div>
     <div style="overflow-x:auto"><table class="fin-cat-table">
