@@ -2715,14 +2715,17 @@ function renderMolhoEditor() {
     byRef[i.id] = i
   })
 
-  // Ingredient options (sorted by name, excluding the molho itself)
+  // Ingredient options: only condimentos and molhos (makes sense for sauce composition)
   function ingOpts(excludeSku) {
     return Object.values(insumosSnapshot)
-      .filter(i => i.active !== false && (i.sku || i.id) !== excludeSku)
+      .filter(i => i.active !== false
+        && (i.sku || i.id) !== excludeSku
+        && (i.type === 'condimento' || i.type === 'molho'))
       .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
       .map(i => {
         const ref = i.sku || i.id
-        return `<option value="${ref}">${i.name}</option>`
+        const typeTag = i.type === 'molho' ? ' [molho]' : ''
+        return `<option value="${ref}">${i.name}${typeTag}</option>`
       }).join('')
   }
 
