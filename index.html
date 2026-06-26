@@ -886,7 +886,7 @@ body.has-cart{padding-bottom:78px}
   </div>
   <div class="bs-block">
     <h3>🏆 MAIS PEDIDOS</h3>
-    <div class="bs-item">
+    <div class="bs-item" data-sku="CF-FRG">
       <div class="bs-left">
         <span class="bs-rank">#1</span>
         <div class="bs-info">
@@ -894,9 +894,9 @@ body.has-cart{padding-bottom:78px}
           <div class="bs-detail">Arroz frito no wok · 180g de proteína</div>
         </div>
       </div>
-      <span class="bs-price">R$ 36</span>
+      <span class="bs-price">R$ --</span>
     </div>
-    <div class="bs-item">
+    <div class="bs-item" data-sku="AGP-MST">
       <div class="bs-left">
         <span class="bs-rank">#2</span>
         <div class="bs-info">
@@ -904,9 +904,9 @@ body.has-cart{padding-bottom:78px}
           <div class="bs-detail">Macarrão wok · 250g de proteína</div>
         </div>
       </div>
-      <span class="bs-price">R$ 47</span>
+      <span class="bs-price">R$ --</span>
     </div>
-    <div class="bs-item">
+    <div class="bs-item" data-sku="CM-CRN">
       <div class="bs-left">
         <span class="bs-rank">#3</span>
         <div class="bs-info">
@@ -914,7 +914,7 @@ body.has-cart{padding-bottom:78px}
           <div class="bs-detail">Macarrão no wok · 180g de proteína</div>
         </div>
       </div>
-      <span class="bs-price">R$ 43,50</span>
+      <span class="bs-price">R$ --</span>
     </div>
   </div>
 </div>
@@ -1562,6 +1562,11 @@ async function syncPricesFromFirestore() {
       if (!nameSpan || !priceSpan) return
       const name = nameSpan.textContent.trim() + (detailSpan ? ' (' + detailSpan.textContent.trim() + ')' : '')
       apply(priceSpan, resolve(d.dataset.sku, name), fmt2)
+    })
+
+    // 6) Mais Pedidos: bs-item with data-sku
+    document.querySelectorAll('.bs-item').forEach(item => {
+      apply(item.querySelector('.bs-price'), resolve(item.dataset.sku, null))
     })
 }
 
