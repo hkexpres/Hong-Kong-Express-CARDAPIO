@@ -423,6 +423,9 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   border-bottom:2px solid rgba(240,232,112,0.3);
   font-weight:700;color:var(--yellow);padding-top:12px;
 }
+.fin-cat-table tr.fin-cat-main:hover td{background:rgba(255,255,255,0.03)}
+.fin-cat-table tr.fin-cat-sub td{background:rgba(255,255,255,0.015);font-size:12.5px;border-bottom:1px solid rgba(255,255,255,0.03)}
+.fin-cat-table tr.fin-cat-sub td:first-child{color:#bbb}
 .margin-bar-wrap{display:flex;align-items:center;gap:8px}
 .margin-bar-bg{flex:1;height:6px;background:#222;border-radius:3px;min-width:60px}
 .margin-bar-fill{height:6px;border-radius:3px;transition:width .4s}
@@ -2257,6 +2260,7 @@ function calcOrderFinance(order, prodBySku, prodByName, fichaByProdId, insumoMap
   ;(order.items || []).forEach(it => {
     const r = it.qty * it.price
     receita += r
+    const prod = findProduct(it, prodBySku, prodByName)
     let c = 0, hasFicha = false
     const lines = consResolveLines(it, prodBySku, prodByName, fichaByProdId)
     if (lines.length > 0) {
@@ -2265,14 +2269,18 @@ function calcOrderFinance(order, prodBySku, prodByName, fichaByProdId, insumoMap
         const ins = insumoMap[insumoId]
         if (ins) c += qty * (ins.costPerUnit || 0)
       })
-    } else {
+    } else if (prod && prod.cost) {
       // Fallback: product.cost from catalog (bebidas, molhos, items without ficha)
-      const prod = findProduct(it, prodBySku, prodByName)
-      if (prod && prod.cost) c = it.qty * prod.cost
+      c = it.qty * prod.cost
     }
     custo += c
-    items.push({ name: it.name, qty: it.qty, price: it.price, receita: r, custo: c,
-                 lucro: r - c, margem: r > 0 ? (r - c) / r * 100 : 0, hasFicha })
+    // Categoria e SKU resolvidos do catálogo (não do nome solto) → corrige rateio por categoria
+    const cat = prod && prod.category ? prod.category : getItemCat(it.name)
+    const sku = (prod && prod.sku) || it.sku || null
+    items.push({ name: it.name, catalogName: prod ? prod.name : it.name, sku, cat,
+                 qty: it.qty, price: it.price, receita: r, custo: c,
+                 lucro: r - c, margem: r > 0 ? (r - c) / r * 100 : 0,
+                 hasFicha, noMatch: !prod })
   })
   // Per-order insumos (bolsa de papel etc.): 1× per order
   let perOrderCost = 0
@@ -2300,15 +2308,25 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   const totMargem  = totReceita > 0 ? totLucro / totReceita * 100 : 0
 
   // ── Category breakdown via fichas técnicas ──
+  // catData: totais por categoria · prodData[cat]: detalhe por produto (para expandir)
   const catData = {}
-  ITEM_GROUPS.forEach(g => { catData[g.key] = { label: g.label, qty: 0, receita: 0, custo: 0 } })
+  const prodData = {}
+  ITEM_GROUPS.forEach(g => { catData[g.key] = { label: g.label, qty: 0, receita: 0, custo: 0 }; prodData[g.key] = {} })
   rows.forEach(r => {
     r.fin.items.forEach(it => {
-      const cat = getItemCat(it.name)
+      const cat = it.cat
       if (!catData[cat]) return
       catData[cat].qty     += it.qty
       catData[cat].receita += it.receita
       catData[cat].custo   += it.custo
+      // Agrupa por produto (chave = SKU quando há; senão nome de exibição)
+      const pkey = it.sku || it.catalogName || it.name
+      const pd = prodData[cat][pkey] || (prodData[cat][pkey] = {
+        name: it.catalogName || it.name, sku: it.sku || '', qty: 0, receita: 0, custo: 0, noMatch: false })
+      pd.qty     += it.qty
+      pd.receita += it.receita
+      pd.custo   += it.custo
+      if (it.noMatch) pd.noMatch = true
     })
   })
 
@@ -2332,19 +2350,35 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
     byDate[key].push(r)
   })
 
+  const mkStr = (rec, cost) => cost > 0 ? (rec / cost).toFixed(2) + '×' : '—'
   const catRows = ITEM_GROUPS.map(g => {
     const d = catData[g.key]
     if (d.receita === 0) return ''
     const lucro = d.receita - d.custo
     const marg  = d.receita > 0 ? lucro / d.receita * 100 : 0
-    return `<tr>
-      <td>${d.label}</td>
+    // Sub-linhas por produto, ordenadas por receita desc
+    const prods = Object.values(prodData[g.key]).sort((a, b) => b.receita - a.receita)
+    const subRows = prods.map(p => {
+      const pl = p.receita - p.custo
+      const pm = p.receita > 0 ? pl / p.receita * 100 : 0
+      const warn = p.noMatch ? ' <span style="color:#F0C060;font-size:10px" title="Sem correspondência no catálogo — custo não calculado">⚠</span>' : ''
+      return `<tr class="fin-cat-sub" data-catkey="${g.key}" style="display:none">
+        <td style="padding-left:30px;color:#bbb;font-weight:400">${p.name}${warn}</td>
+        <td>${p.qty}</td>
+        <td>${fmtBRL(p.receita)}</td>
+        <td style="color:#aaa">${fmtBRL(p.custo)}</td>
+        <td style="color:#7DB3FF" title="Markup: receita ÷ custo">${mkStr(p.receita, p.custo)}</td>
+        <td>${pctPill(pm)}</td>
+      </tr>`
+    }).join('')
+    return `<tr class="fin-cat-main" style="cursor:pointer" onclick="toggleCatDetail('${g.key}', this)">
+      <td><span class="fin-cat-caret" style="display:inline-block;width:14px;color:#888;transition:transform .15s">▶</span>${d.label}</td>
       <td>${d.qty}</td>
       <td>${fmtBRL(d.receita)}</td>
       <td style="color:#aaa">${fmtBRL(d.custo)}</td>
       <td style="color:${lucro>=0?'var(--green2)':'#F44336'}">${fmtBRL(lucro)}</td>
       <td>${marginBarFill(marg)}</td>
-    </tr>`
+    </tr>${subRows}`
   }).join('')
 
   let orderRows = ''
@@ -3909,13 +3943,15 @@ async function loadConsumos() {
 // iFood sends item names in "DISH · Variation" format with uppercase + accents that
 // differ from catalog names. This map resolves them to SKUs automatically.
 const IFOOD_SKU_MAP = {
-  // Chao Fan
+  // Chao Fan  (cardápio usa "Porco" em PT; mantém "Cerdo" p/ pedidos antigos)
   'chow fan · frango':'CF-FRG',  'chao fan · frango':'CF-FRG',
+  'chow fan · porco':'CF-PRC',   'chao fan · porco':'CF-PRC',
   'chow fan · cerdo':'CF-PRC',   'chao fan · cerdo':'CF-PRC',
   'chow fan · carne':'CF-CRN',   'chao fan · carne':'CF-CRN',
   'chow fan · misto':'CF-MST',   'chao fan · misto':'CF-MST',
   // Chao Mein
   'chow mein · frango':'CM-FRG', 'chao mein · frango':'CM-FRG',
+  'chow mein · porco':'CM-PRC',  'chao mein · porco':'CM-PRC',
   'chow mein · cerdo':'CM-PRC',  'chao mein · cerdo':'CM-PRC',
   'chow mein · carne':'CM-CRN',  'chao mein · carne':'CM-CRN',
   'chow mein · misto':'CM-MST',  'chao mein · misto':'CM-MST',
@@ -3928,7 +3964,7 @@ const IFOOD_SKU_MAP = {
   // Carne Teriyaki
   'carne teriyaki · carne':'TRY-CRN', 'carne teriyaki':'TRY-CRN',
   // Agripicante
-  'agripicante · frango':'AGP-FRG', 'agripicante · cerdo':'AGP-PRC', 'agripicante · misto':'AGP-MST',
+  'agripicante · frango':'AGP-FRG', 'agripicante · porco':'AGP-PRC', 'agripicante · cerdo':'AGP-PRC', 'agripicante · misto':'AGP-MST',
   // Kung Pao
   'kung pao · frango':'KP-FRG', 'kung pao · carne':'KP-CRN', 'kung pao · misto':'KP-MST',
   // Gyoza (iFood appends "unidades")
@@ -3941,6 +3977,12 @@ const IFOOD_SKU_MAP = {
   'molho agripicante 30ml':'SAL-AGRI',    'molho agripicante (30ml)':'SAL-AGRI',
   'molho soja hinomoto 30ml':'SAL-HINO',  'molho soja hinomoto (30ml)':'SAL-HINO',
   'molho kung pao 30ml':'SAL-KPAO',       'molho kung pao (30ml)':'SAL-KPAO',
+  // Bebidas (nome exibido = nome + detalhe entre parênteses; catálogo usa nomes ES)
+  'heineken (350ml · lata)':'B-HEI', 'heineken':'B-HEI',
+  'amstel (350ml · lata)':'B-AMS',   'amstel':'B-AMS', 'amstel lata 350ml':'B-AMS',
+  'coca-cola (350ml)':'B-COCA',      'coca-cola':'B-COCA', 'coca normal':'B-COCA',
+  'coca zero (350ml)':'B-ZERO',      'coca zero':'B-ZERO',
+  'guaraná (350ml)':'B-GUA',         'guaraná':'B-GUA', 'guarana (350ml)':'B-GUA', 'guarana':'B-GUA', 'guaraná antártica':'B-GUA',
   // Combos (iFood usa nomes dos componentes ≠ nome no catálogo)
   'chow fan frango + agripicante misto + gyoza x5':'CMB-DRG',
   'carne teriyaki + gyoza x8':'CMB-PRM',  'carne teriyaki + 8 gyoza':'CMB-PRM',
@@ -3955,12 +3997,19 @@ function findProduct(item, prodBySku, prodByName) {
   if (item.sku && prodBySku[item.sku]) return prodBySku[item.sku]
   const nameKey = (item.name || '').toLowerCase().trim()
   if (prodByName[nameKey]) return prodByName[nameKey]
-  // iFood name format: automatic mapping
+  // iFood / cardápio name format: automatic mapping
   const ifoodSku = IFOOD_SKU_MAP[nameKey]
   if (ifoodSku && prodBySku[ifoodSku]) return prodBySku[ifoodSku]
   // Manual override: type SKU code in the name field (e.g. "CF-FRG")
   const skuKey = (item.name || '').trim().toUpperCase()
   if (prodBySku[skuKey]) return prodBySku[skuKey]
+  // Fallback: drop the parenthetical detail ("Coca Zero (350ml)" → "coca zero") and retry
+  const bare = nameKey.replace(/\s*\([^)]*\)\s*$/, '').trim()
+  if (bare && bare !== nameKey) {
+    if (prodByName[bare]) return prodByName[bare]
+    const bareSku = IFOOD_SKU_MAP[bare]
+    if (bareSku && prodBySku[bareSku]) return prodBySku[bareSku]
+  }
   return null
 }
 
@@ -3982,6 +4031,16 @@ function consResolveLines(item, prodBySku, prodByName, fichaByProdId) {
   const ficha = fichaByProdId[prod.id]
   if (!ficha || !ficha.lines) return []
   return ficha.lines.map(l => ({ insumoId: l.insumoId, qty: l.qty * item.qty }))
+}
+
+// Expande/recolhe o detalhe por produto de uma categoria na tabela de rentabilidade
+function toggleCatDetail(catKey, rowEl) {
+  const subs = document.querySelectorAll(`tr.fin-cat-sub[data-catkey="${catKey}"]`)
+  if (!subs.length) return
+  const show = subs[0].style.display === 'none'
+  subs.forEach(tr => { tr.style.display = show ? 'table-row' : 'none' })
+  const caret = rowEl && rowEl.querySelector('.fin-cat-caret')
+  if (caret) caret.style.transform = show ? 'rotate(90deg)' : 'rotate(0deg)'
 }
 
 // ── FINANÇAS ORDER DETAIL MODAL ──
