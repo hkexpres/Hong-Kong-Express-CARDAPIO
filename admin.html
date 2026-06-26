@@ -2459,6 +2459,13 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   const faltamPratos    = breakEvenPratos != null ? Math.max(0, breakEvenPratos - qtyPratos) : 0
   const progressoBE     = breakEvenPratos ? Math.min(100, qtyPratos / breakEvenPratos * 100) : 0
   const lucroLiquido    = totLucro - custosFixosTotal
+  // Equilíbrio global (faturamento) = custos fixos ÷ margem de contribución (lucro bruto / receita)
+  // Inclui TODAS as categorias (pratos + combos + gyozas + bebidas)
+  const margemContrib   = totReceita > 0 ? totLucro / totReceita : 0
+  const breakEvenFat    = (custosFixosTotal > 0 && margemContrib > 0)
+    ? custosFixosTotal / margemContrib : null
+  const progressoFat    = breakEvenFat ? Math.min(100, totReceita / breakEvenFat * 100) : 0
+  const faltamFat       = breakEvenFat != null ? Math.max(0, breakEvenFat - totReceita) : 0
 
   // ── Monthly chart data ──
   const monthMap = {}
@@ -2588,17 +2595,22 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
       </div>
     </div>
     ${custosFixosTotal > 0 ? `
-    <div class="fin-section-title" style="margin-top:8px">Ponto de Equilíbrio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· custos fixos vs. pratos</span></div>
-    <div class="fin-kpi-row" style="grid-template-columns:repeat(3,1fr)">
+    <div class="fin-section-title" style="margin-top:8px">Ponto de Equilíbrio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· custos fixos vs. negócio</span></div>
+    <div class="fin-kpi-row">
       <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)">
         <div class="fin-kpi-label">Custos fixos mensais</div>
         <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(custosFixosTotal)}</div>
         <div class="fin-kpi-sub">${custosFixosItems.length} ${custosFixosItems.length === 1 ? 'item' : 'itens'}</div>
       </div>
       <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)">
-        <div class="fin-kpi-label">Equilíbrio: pratos / mês</div>
+        <div class="fin-kpi-label">Equilíbrio estrutural · pratos/mês</div>
         <div class="fin-kpi-val yellow">${breakEvenPratos != null ? breakEvenPratos : '—'}</div>
-        <div class="fin-kpi-sub">${breakEvenPratos != null ? '≈ ' + fmtBRL(breakEvenPratos * precoMedioPrato) + ' em pratos' : 'lucro/prato ≤ 0 — reveja custos'}</div>
+        <div class="fin-kpi-sub">${breakEvenPratos != null ? '≈ ' + fmtBRL(breakEvenPratos * precoMedioPrato) + ' só em pratos' : 'lucro/prato ≤ 0 — reveja custos'}</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)">
+        <div class="fin-kpi-label">Equilíbrio global · faturamento/mês</div>
+        <div class="fin-kpi-val yellow">${breakEvenFat != null ? fmtBRL(breakEvenFat) : '—'}</div>
+        <div class="fin-kpi-sub">margem ${(margemContrib * 100).toFixed(1)}% · inclui combos, gyozas e bebidas</div>
       </div>
       <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)">
         <div class="fin-kpi-label">Resultado do período</div>
@@ -2607,12 +2619,20 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
       </div>
     </div>
     ${breakEvenPratos != null ? `
-    <div style="margin:-6px 0 22px">
+    <div style="margin:-6px 0 10px">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray);margin-bottom:6px">
-        <span>${qtyPratos} pratos vendidos no período</span>
-        <span style="color:${faltamPratos > 0 ? 'var(--yellow)' : 'var(--green2)'}">${faltamPratos > 0 ? 'faltam ' + faltamPratos + ' p/ equilíbrio' : '✓ equilíbrio atingido'}</span>
+        <span>Pratos: ${qtyPratos} vendidos no período</span>
+        <span style="color:${faltamPratos > 0 ? 'var(--yellow)' : 'var(--green2)'}">${faltamPratos > 0 ? 'faltam ' + faltamPratos + ' pratos' : '✓ atingido'}</span>
       </div>
       <div class="margin-bar-bg" style="height:9px"><div class="margin-bar-fill" style="width:${progressoBE}%;height:9px;background:${progressoBE >= 100 ? 'var(--green2)' : 'var(--yellow)'}"></div></div>
+    </div>` : ''}
+    ${breakEvenFat != null ? `
+    <div style="margin:0 0 22px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray);margin-bottom:6px">
+        <span>Faturamento: ${fmtBRL(totReceita)} no período</span>
+        <span style="color:${faltamFat > 0 ? 'var(--yellow)' : 'var(--green2)'}">${faltamFat > 0 ? 'faltam ' + fmtBRL(faltamFat) : '✓ atingido'}</span>
+      </div>
+      <div class="margin-bar-bg" style="height:9px"><div class="margin-bar-fill" style="width:${progressoFat}%;height:9px;background:${progressoFat >= 100 ? 'var(--green2)' : 'var(--yellow)'}"></div></div>
     </div>` : ''}
     ` : ''}
 
