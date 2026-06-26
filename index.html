@@ -1501,10 +1501,11 @@ async function syncPricesFromFirestore() {
   // e esta função preenche os valores reais ao carregar. Sem fallback no HTML,
   // então tentamos 1 vez e, se falhar, repetimos uma vez após 1,5s.
     const snap = await db.collection('products').get()
-    const byName = {}, bySku = {}
+    const byName = {}, bySku = {}, inactive = new Set()
     snap.docs.forEach(d => {
       const p = d.data()
-      if (!p.name || p.price == null || p.active === false) return
+      if (!p.name || p.price == null) return
+      if (p.active === false) { if (p.sku) inactive.add(p.sku); return }
       byName[p.name] = p.price
       if (p.sku) bySku[p.sku] = p.price
     })
@@ -1512,6 +1513,13 @@ async function syncPricesFromFirestore() {
     const fmt2 = v => 'R$ ' + v.toFixed(2).replace('.', ',')
     const resolve = (sku, name) => bySku[sku] ?? byName[name] ?? null
     const apply = (priceEl, price, f) => { if (priceEl && price != null) priceEl.textContent = (f || fmt)(price) }
+    // marca chips de produtos inativos
+    const markInactive = chip => {
+      chip.style.opacity = '.45'
+      chip.style.filter  = 'grayscale(1)'
+      const pr = chip.querySelector('.pchip-price')
+      if (pr) pr.textContent = 'Esgotado'
+    }
 
     // 1) Pratos base + destaques: pchip with data-sku
     document.querySelectorAll('.plate-card').forEach(card => {
@@ -1523,8 +1531,10 @@ async function syncPricesFromFirestore() {
       card.querySelectorAll('.pchip').forEach(chip => {
         const labelEl = chip.querySelector('.pchip-label')
         if (!labelEl) return
+        const sku = chip.dataset.sku
+        if (sku && inactive.has(sku)) { markInactive(chip); return }
         const fullName = dishName + ' · ' + labelEl.textContent.trim()
-        apply(chip.querySelector('.pchip-price'), resolve(chip.dataset.sku, fullName))
+        apply(chip.querySelector('.pchip-price'), resolve(sku, fullName))
       })
     })
 
@@ -1566,7 +1576,15 @@ async function syncPricesFromFirestore() {
 
     // 6) Mais Pedidos: bs-item with data-sku
     document.querySelectorAll('.bs-item').forEach(item => {
-      apply(item.querySelector('.bs-price'), resolve(item.dataset.sku, null))
+      const sku = item.dataset.sku
+      if (sku && inactive.has(sku)) {
+        item.style.opacity = '.45'
+        item.style.filter  = 'grayscale(1)'
+        const pr = item.querySelector('.bs-price')
+        if (pr) pr.textContent = 'Esgotado'
+        return
+      }
+      apply(item.querySelector('.bs-price'), resolve(sku, null))
     })
 }
 

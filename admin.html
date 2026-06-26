@@ -800,6 +800,11 @@ input[type="number"]{-moz-appearance:textfield}
         <button class="art-btn art-btn-primary" id="artAddBtn">+ Criar</button>
       </div>
 
+      <div style="display:flex;align-items:center;gap:10px;margin:12px 0 8px;flex-wrap:wrap">
+        <div id="artFilterChips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <input type="text" id="artSearch" placeholder="🔍 Buscar produto…" style="margin-left:auto;padding:5px 10px;border-radius:7px;border:1px solid #333;background:#1e1e1e;color:var(--white);font-size:13px;min-width:160px" oninput="renderArtTable()">
+      </div>
+
       <div style="overflow-x:auto">
         <table class="art-table">
           <thead><tr>
@@ -2436,6 +2441,26 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
 // New (unsaved) rows have id starting with '__new__'
 let artigosBuffer = {}    // changes pending save
 let artigosSnapshot = {}  // last loaded state from Firestore
+let artFilterCat   = 'all'
+
+function setArtFilter(cat) {
+  artFilterCat = cat
+  renderArtTable()
+}
+
+function renderArtFilterChips() {
+  const el = document.getElementById('artFilterChips')
+  if (!el) return
+  const counts = {}
+  mergeArtigos().forEach(a => { const c = a.category || 'pratos'; counts[c] = (counts[c] || 0) + 1 })
+  const total = mergeArtigos().length
+  let html = `<button class="ins-filter-chip ${artFilterCat === 'all' ? 'active' : ''}" onclick="setArtFilter('all')">Todos (${total})</button>`
+  Object.entries(CAT_LABELS).forEach(([k, v]) => {
+    if (!counts[k]) return
+    html += `<button class="ins-filter-chip ${artFilterCat === k ? 'active' : ''}" onclick="setArtFilter('${k}')">${v} (${counts[k]})</button>`
+  })
+  el.innerHTML = html
+}
 
 async function loadArtigos() {
   const snap = await db.collection('products').get()
@@ -2458,10 +2483,19 @@ function mergeArtigos() {
 }
 
 function renderArtTable() {
-  const items = mergeArtigos()
+  renderArtFilterChips()
+  const searchEl = document.getElementById('artSearch')
+  const search   = (searchEl ? searchEl.value : '').toLowerCase().trim()
+  const all = mergeArtigos()
+  const items = all.filter(it => {
+    if (artFilterCat !== 'all' && (it.category || 'pratos') !== artFilterCat) return false
+    if (search && !(it.name || '').toLowerCase().includes(search) && !(it.sku || '').toLowerCase().includes(search)) return false
+    return true
+  })
   const body = document.getElementById('artTableBody')
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="7" style="color:#555;padding:24px;text-align:center">Nenhum artigo cadastrado. Importe do histórico ou crie um novo.</td></tr>'
+    const msg = all.length ? 'Nenhum artigo neste filtro.' : 'Nenhum artigo cadastrado. Importe do histórico ou crie um novo.'
+    body.innerHTML = `<tr><td colspan="7" style="color:#555;padding:24px;text-align:center">${msg}</td></tr>`
     return
   }
   body.innerHTML = items.map(it => {
