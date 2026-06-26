@@ -2238,6 +2238,7 @@ async function loadFinancas() {
     prodSnap.docs.forEach(d => {
       const p = { id: d.id, ...d.data() }
       if (p.sku)  prodBySku[p.sku] = p
+      if (d.id)   prodBySku[d.id]  = p   // doc id = SKU p/ produtos ERP (mesmo sem campo sku)
       if (p.name) prodByName[p.name.toLowerCase().trim()] = p
     })
 
@@ -2367,8 +2368,9 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
         <td>${p.qty}</td>
         <td>${fmtBRL(p.receita)}</td>
         <td style="color:#aaa">${fmtBRL(p.custo)}</td>
-        <td style="color:#7DB3FF" title="Markup: receita ÷ custo">${mkStr(p.receita, p.custo)}</td>
+        <td style="color:${pl>=0?'var(--green2)':'#F44336'}">${fmtBRL(pl)}</td>
         <td>${pctPill(pm)}</td>
+        <td style="color:#7DB3FF;font-size:12px" title="Markup: receita ÷ custo">${mkStr(p.receita, p.custo)}</td>
       </tr>`
     }).join('')
     return `<tr class="fin-cat-main" style="cursor:pointer" onclick="toggleCatDetail('${g.key}', this)">
@@ -2378,6 +2380,7 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
       <td style="color:#aaa">${fmtBRL(d.custo)}</td>
       <td style="color:${lucro>=0?'var(--green2)':'#F44336'}">${fmtBRL(lucro)}</td>
       <td>${marginBarFill(marg)}</td>
+      <td></td>
     </tr>${subRows}`
   }).join('')
 
@@ -2438,11 +2441,12 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
         <th>Categoria</th><th style="text-align:right">Un.</th>
         <th style="text-align:right">Receita</th><th style="text-align:right">Custo</th>
         <th style="text-align:right">Lucro</th><th style="text-align:right">Margem</th>
+        <th style="text-align:right;color:#7DB3FF">MK ×</th>
       </tr></thead>
       <tbody>${catRows}
         <tr><td>TOTAL</td><td></td>
           <td>${fmtBRL(totReceita)}</td><td>${fmtBRL(totCusto)}</td>
-          <td>${fmtBRL(totLucro)}</td><td>${marginBarFill(totMargem)}</td>
+          <td>${fmtBRL(totLucro)}</td><td>${marginBarFill(totMargem)}</td><td></td>
         </tr>
       </tbody>
     </table></div>
@@ -3893,6 +3897,7 @@ async function loadConsumos() {
     prodSnap.docs.forEach(d => {
       const p = { id: d.id, ...d.data() }
       if (p.sku)  prodBySku[p.sku] = p
+      if (d.id)   prodBySku[d.id]  = p   // doc id = SKU p/ produtos ERP (mesmo sem campo sku)
       if (p.name) prodByName[p.name.toLowerCase().trim()] = p
     })
 
