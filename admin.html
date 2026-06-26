@@ -755,7 +755,7 @@ input[type="number"]{-moz-appearance:textfield}
       <div class="counter-card green">
         <div class="counter-label">✅ Faturado hoje</div>
         <div class="counter-val" id="cFaturadoVal">R$ 0,00</div>
-        <div class="counter-sub" id="cFaturadoPlatos">0 platos</div>
+        <div class="counter-sub" id="cFaturadoPlatos">0 produtos</div>
       </div>
       <div class="counter-card yellow">
         <div class="counter-label">⏳ Pendentes</div>
@@ -1139,11 +1139,14 @@ const ITEM_GROUPS = [
   { key: 'bebidas', label: 'Bebidas' },
   { key: 'molhos',  label: 'Molhos'  },
 ]
+// Reconhece bebidas pelos nomes reais do cardápio (marcas + "350ml"), não só
+// "cerveja"/"refrigerante" — senão caíam em 'pratos' e inflavam a contagem de pratos.
+const BEBIDA_RE = /cerveja|refrigerante|coca|guaran|heineken|amstel|\b350\s?ml\b/i
 function classifyItem(name) {
   const n = name.toLowerCase()
   if (n.startsWith('combo') || n.includes('combo') || n.includes(' + ')) return 'combos'
   if (n.includes('gyoza'))                                                 return 'acomp'
-  if (n.includes('cerveja') || n.includes('refrigerante'))                return 'bebidas'
+  if (BEBIDA_RE.test(n))                                                   return 'bebidas'
   if (n.includes('molho')   || n.includes('salsa'))                       return 'molhos'
   return 'pratos'
 }
@@ -1159,7 +1162,7 @@ const GROUPS = [
   { name: 'Kung Pao',       test: n => n.includes('kung pao') },
   { name: 'Gyoza',          test: n => n.includes('gyoza') },
   { name: 'Combos',         test: n => n.startsWith('combo') || n.includes(' + ') },
-  { name: 'Bebidas & Molhos', test: n => n.includes('cerveja') || n.includes('refrigerante') || n.includes('molho') || n.includes('salsa') },
+  { name: 'Bebidas & Molhos', test: n => BEBIDA_RE.test(n) || n.includes('molho') || n.includes('salsa') },
 ]
 function groupDish(name) {
   const n = name.toLowerCase()
@@ -1458,7 +1461,7 @@ function buildDonut(canvasId, centerId, legendId, orders) {
 
   centerEl.innerHTML = `
     <div class="donut-center-val">${fmtBRL(totalBRL)}</div>
-    <div class="donut-center-sub">${totalPlatos} platos · ${orders.length} ped.</div>
+    <div class="donut-center-sub">${totalPlatos} produtos · ${orders.length} ped.</div>
   `
 
   legendEl.innerHTML = sorted.map(([g, v], i) => `
@@ -1555,7 +1558,7 @@ function buildLineChart(orders, nMonths = 12) {
         },
         {
           type: 'line',
-          label: 'Qtd. platos',
+          label: 'Qtd. produtos',
           data: qty,
           borderColor: '#64B5F6',
           backgroundColor: 'rgba(100,181,246,0.06)',
@@ -1598,7 +1601,7 @@ function buildLineChart(orders, nMonths = 12) {
             afterBody: (items) => {
               const brlVal = items.find(i => i.datasetIndex === 0)?.raw || 0
               const qtyVal = items.find(i => i.datasetIndex === 1)?.raw || 0
-              if (qtyVal > 0) return ['', `Méd/prato: ${fmtBRL(brlVal / qtyVal)}`]
+              if (qtyVal > 0) return ['', `Méd/produto: ${fmtBRL(brlVal / qtyVal)}`]
               return []
             }
           }
@@ -1639,7 +1642,7 @@ function renderHoje(orders) {
   const canceladoBRL   = cancelled.reduce((a, o) => a + (o.total || 0), 0)
 
   document.getElementById('cFaturadoVal').textContent    = fmtBRL(faturadoBRL)
-  document.getElementById('cFaturadoPlatos').textContent = faturadoPlatos + ' platos'
+  document.getElementById('cFaturadoPlatos').textContent = faturadoPlatos + ' produtos'
   document.getElementById('cPendentesVal').textContent   = pending.length
   document.getElementById('cCanceladosVal').textContent  = cancelled.length
   document.getElementById('cCanceladosBRL').textContent  = fmtBRL(canceladoBRL)
@@ -2548,6 +2551,7 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   </tr>`
 
   el.innerHTML = `
+    <div class="fin-section-title" style="margin-top:0">Indicadores Gerais do Negócio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· todas as categorias</span></div>
     <div class="fin-kpi-row">
       <div class="fin-kpi">
         <div class="fin-kpi-label">Receita total</div>
