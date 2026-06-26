@@ -627,6 +627,24 @@ input[type="number"]{-moz-appearance:textfield}
   display:inline-block;margin-left:8px;padding:1px 7px;border-radius:10px;
   background:rgba(120,180,255,.15);color:#7DB3FF;font-size:10px;font-weight:600;vertical-align:middle;cursor:help;
 }
+
+/* ── RECEITAS DOS MOLHOS ── */
+#molhoRecipesGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-top:16px}
+.molho-recipe-card{background:var(--bg3);border:1px solid #2e2e2e;border-radius:12px;padding:16px}
+.molho-recipe-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #2a2a2a}
+.molho-recipe-name{font-weight:700;font-size:14px;color:var(--white)}
+.molho-recipe-cost{font-size:13px;font-weight:700;color:var(--yellow)}
+.molho-yield-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:13px}
+.molho-comp-table{width:100%;border-collapse:collapse;margin:6px 0 4px}
+.molho-comp-table th{text-align:left;padding:5px 8px;color:#777;font-size:11px;font-weight:600;border-bottom:1px solid #2a2a2a}
+.molho-comp-table th:nth-child(2){text-align:right}
+.molho-comp-table td{padding:5px 8px;font-size:13px;border-bottom:1px solid #1e1e1e}
+.molho-comp-table td:nth-child(2){text-align:right;white-space:nowrap}
+.molho-comp-table td:nth-child(3){text-align:center;width:38px}
+.molho-add-row{display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid #2a2a2a}
+.molho-add-row select{flex:1;min-width:0}
+.molho-cost-line{font-size:11px;color:#888;margin-top:6px;padding-top:6px;border-top:1px solid #1e1e1e}
+.molho-cost-line span{color:#aaa}
 </style>
 </head>
 <body>
@@ -888,6 +906,17 @@ input[type="number"]{-moz-appearance:textfield}
       <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
         <button class="art-btn art-btn-primary" id="insSaveBtn" onclick="saveInsumos()">Salvar alterações</button>
         <span class="fin-saved-msg" id="insSavedMsg">✓ Salvo</span>
+      </div>
+    </div>
+
+    <!-- RECEITAS DOS MOLHOS -->
+    <div class="fin-config-card" style="margin-top:20px">
+      <div class="fin-config-title">Receitas dos Molhos</div>
+      <div class="fin-config-sub">Composição de cada molho base: ingredientes e quantidades (ml) por lote e rendimento total. Edite e salve — o custo é recalculado em cascata e reflete em todos os pratos que usam o molho.</div>
+      <div id="molhoRecipesGrid"><p style="color:#555;padding:20px 0">Carregando receitas…</p></div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:14px">
+        <button class="art-btn art-btn-primary" id="molhoSaveBtn" onclick="saveMolhoRecipes()">Salvar receitas</button>
+        <span class="fin-saved-msg" id="molhoSavedMsg">✓ Salvo</span>
       </div>
     </div>
   </div>
@@ -2636,9 +2665,13 @@ function recomputeMolhoCosts(insumoMap) {
   const lookup = ref => insumoMap[ref] || bySku[ref]
   for (let pass = 0; pass < 12; pass++) {
     let changed = false
-    for (const [sku, recipe] of Object.entries(MOLHO_RECIPES)) {
+    for (const [sku, fallback] of Object.entries(MOLHO_RECIPES)) {
       const ins = lookup(sku)
-      if (!ins || !(recipe.yield > 0)) continue
+      if (!ins) continue
+      // Prefer Firestore-stored recipe (qty/yield model); fall back to hardcoded constant
+      const recipe = (ins.recipe && ins.recipe.yield > 0 && Array.isArray(ins.recipe.components))
+        ? ins.recipe : fallback
+      if (!(recipe.yield > 0)) continue
       let batchCost = 0, ok = true
       for (const c of recipe.components) {
         const comp = lookup(c.ref)
@@ -2657,6 +2690,185 @@ function recomputeMolhoCosts(insumoMap) {
     if (!changed) break
   }
   return insumoMap
+}
+
+// ── EDITOR DE RECEITAS DE MOLHOS ──
+let molhoRecipesBuffer = {}  // {sku → {yield, components}} — edições não salvas
+
+// Retorna a receita ativa para o molho: buffer > Firestore > fallback constante
+function getMolhoRecipe(sku) {
+  if (molhoRecipesBuffer[sku]) return molhoRecipesBuffer[sku]
+  const snap = insumosSnapshot[sku] || Object.values(insumosSnapshot).find(i => i.sku === sku)
+  if (snap && snap.recipe && snap.recipe.yield > 0 && Array.isArray(snap.recipe.components))
+    return snap.recipe
+  return MOLHO_RECIPES[sku] || { yield: 1000, components: [] }
+}
+
+function renderMolhoEditor() {
+  const container = document.getElementById('molhoRecipesGrid')
+  if (!container) return
+
+  // Lookup table: sku/id → insumo
+  const byRef = {}
+  Object.values(insumosSnapshot).forEach(i => {
+    if (i.sku) byRef[i.sku] = i
+    byRef[i.id] = i
+  })
+
+  // Ingredient options (sorted by name, excluding the molho itself)
+  function ingOpts(excludeSku) {
+    return Object.values(insumosSnapshot)
+      .filter(i => i.active !== false && (i.sku || i.id) !== excludeSku)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .map(i => {
+        const ref = i.sku || i.id
+        return `<option value="${ref}">${i.name}</option>`
+      }).join('')
+  }
+
+  container.innerHTML = Object.keys(MOLHO_RECIPES).map(sku => {
+    const recipe = getMolhoRecipe(sku)
+    const ins    = byRef[sku]
+    const name   = ins ? ins.name : sku
+    const cpu    = ins ? ins.costPerUnit : null
+
+    // Cost breakdown per component
+    let batchTotal = 0, breakdownLines = []
+    recipe.components.forEach(c => {
+      const ci = byRef[c.ref]
+      if (ci && ci.costPerUnit != null) {
+        const lineCost = (c.qty || 0) * ci.costPerUnit
+        batchTotal += lineCost
+        breakdownLines.push(`${ci.name}: R$ ${lineCost.toFixed(4)}`)
+      }
+    })
+    const cpuCalc = recipe.yield > 0 ? batchTotal / recipe.yield : null
+    const costStr = cpuCalc != null
+      ? `R$&nbsp;${(cpuCalc * 1000).toFixed(2)}/L`
+      : (cpu != null ? `R$&nbsp;${(cpu * 1000).toFixed(2)}/L` : '—')
+
+    const compRows = recipe.components.map((c, idx) => {
+      const ci = byRef[c.ref]
+      const compName = ci ? ci.name : c.ref
+      const lineCost = ci && ci.costPerUnit != null ? (c.qty || 0) * ci.costPerUnit : null
+      return `<tr>
+        <td>${compName}</td>
+        <td>
+          <input type="number" class="art-inp" style="width:76px;text-align:right;padding:4px 6px;font-size:13px"
+            value="${c.qty}" min="0" step="1"
+            onchange="onMolhoQtyChange('${sku}',${idx},this.value)">
+          <span style="color:#666;font-size:11px"> ml</span>
+        </td>
+        <td style="text-align:right;color:#777;font-size:12px;padding-right:4px">${lineCost != null ? 'R$ ' + lineCost.toFixed(4) : ''}</td>
+        <td>
+          <button class="art-btn art-btn-danger" style="padding:3px 8px;font-size:12px"
+            onclick="removeMolhoComponent('${sku}',${idx})">✕</button>
+        </td>
+      </tr>`
+    }).join('')
+
+    const dirty = !!molhoRecipesBuffer[sku]
+
+    return `<div class="molho-recipe-card${dirty ? '" style="border-color:#555' : ''}">
+      <div class="molho-recipe-header">
+        <div>
+          <span class="molho-recipe-name">${name}</span>
+          <span style="color:#444;font-size:11px;margin-left:6px">${sku}</span>
+          ${dirty ? '<span style="color:#F0C060;font-size:11px;margin-left:6px">● editado</span>' : ''}
+        </div>
+        <span class="molho-recipe-cost" id="molho-cost-${sku}">${costStr}</span>
+      </div>
+      <div class="molho-yield-row">
+        <span style="color:#888">Rendimento por lote:</span>
+        <input type="number" class="art-inp" style="width:76px;text-align:right;padding:4px 6px;font-size:13px"
+          value="${recipe.yield}" min="1" step="1"
+          onchange="onMolhoYieldChange('${sku}',this.value)">
+        <span style="color:#888">ml produzidos</span>
+        <span style="color:#555;font-size:12px;margin-left:auto">Custo total do lote: <span style="color:#aaa">R$ ${batchTotal.toFixed(4)}</span></span>
+      </div>
+      <table class="molho-comp-table">
+        <thead><tr>
+          <th>Ingrediente</th>
+          <th style="text-align:right">Qtd. no lote</th>
+          <th style="text-align:right;color:#555">Custo linha</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${compRows}</tbody>
+      </table>
+      <div class="molho-add-row">
+        <select class="art-inp" id="molho-add-sel-${sku}" style="flex:1;min-width:0;font-size:13px;padding:5px 8px">
+          <option value="">Selecionar ingrediente…</option>
+          ${ingOpts(sku)}
+        </select>
+        <input type="number" class="art-inp" id="molho-add-qty-${sku}"
+          style="width:76px;text-align:right;padding:5px 6px;font-size:13px" min="1" step="1" placeholder="ml">
+        <button class="art-btn" style="padding:6px 12px;font-size:13px;background:rgba(255,255,255,.07);border:1px solid #444"
+          onclick="addMolhoComponent('${sku}')">+ Add</button>
+      </div>
+    </div>`
+  }).join('')
+}
+
+function onMolhoQtyChange(sku, idx, val) {
+  const recipe = JSON.parse(JSON.stringify(getMolhoRecipe(sku)))
+  recipe.components[idx].qty = parseFloat(val) || 0
+  molhoRecipesBuffer[sku] = recipe
+  renderMolhoEditor()
+}
+
+function onMolhoYieldChange(sku, val) {
+  const recipe = JSON.parse(JSON.stringify(getMolhoRecipe(sku)))
+  recipe.yield = parseFloat(val) || 1
+  molhoRecipesBuffer[sku] = recipe
+  renderMolhoEditor()
+}
+
+function addMolhoComponent(sku) {
+  const selEl = document.getElementById(`molho-add-sel-${sku}`)
+  const qtyEl = document.getElementById(`molho-add-qty-${sku}`)
+  const ref = selEl ? selEl.value : ''
+  const qty = parseFloat(qtyEl ? qtyEl.value : '') || 0
+  if (!ref) { if (selEl) selEl.focus(); return }
+  if (!qty) { if (qtyEl) qtyEl.focus(); return }
+  const recipe = JSON.parse(JSON.stringify(getMolhoRecipe(sku)))
+  recipe.components.push({ ref, qty })
+  molhoRecipesBuffer[sku] = recipe
+  renderMolhoEditor()
+}
+
+function removeMolhoComponent(sku, idx) {
+  const recipe = JSON.parse(JSON.stringify(getMolhoRecipe(sku)))
+  recipe.components.splice(idx, 1)
+  molhoRecipesBuffer[sku] = recipe
+  renderMolhoEditor()
+}
+
+async function saveMolhoRecipes() {
+  if (!Object.keys(molhoRecipesBuffer).length) {
+    alert('Nenhuma alteração para salvar.')
+    return
+  }
+  const btn = document.getElementById('molhoSaveBtn')
+  btn.disabled = true; btn.textContent = 'Salvando…'
+  try {
+    const batch = db.batch()
+    for (const [sku, recipe] of Object.entries(molhoRecipesBuffer)) {
+      // Locate Firestore doc: doc id is usually the SKU directly
+      const docId = insumosSnapshot[sku]
+        ? sku
+        : Object.keys(insumosSnapshot).find(id => insumosSnapshot[id]?.sku === sku)
+      if (!docId) { console.warn('Doc não encontrado para molho:', sku); continue }
+      batch.update(db.collection('insumos').doc(docId), { recipe })
+    }
+    await batch.commit()
+    molhoRecipesBuffer = {}
+    await loadInsumos()
+    renderInsTable()
+    renderMolhoEditor()
+    const msg = document.getElementById('molhoSavedMsg')
+    if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500) }
+  } catch (e) { alert('Erro ao salvar receitas: ' + e.message) }
+  finally { btn.disabled = false; btn.textContent = 'Salvar receitas' }
 }
 
 // ── INSUMOS ──
@@ -2856,6 +3068,7 @@ async function initInsumos() {
   try {
     await loadInsumos()
     renderInsTable()
+    renderMolhoEditor()
   } catch (e) {
     console.error('Insumos load error:', e)
     body.innerHTML = `<tr><td colspan="6" style="color:#F44336;padding:20px;text-align:center">Erro ao carregar: ${e.message}</td></tr>`
