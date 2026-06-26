@@ -551,7 +551,13 @@ input[type="number"]{-moz-appearance:textfield}
 .manual-line:last-of-type{border-bottom:none}
 .manual-line-qty{color:var(--yellow);font-weight:700;white-space:nowrap}
 .manual-line-name{flex:1;color:var(--white)}
-.manual-line-price{color:var(--gray);white-space:nowrap}
+.manual-line-price{color:var(--gray);white-space:nowrap;display:flex;align-items:center;gap:4px}
+.manual-price-inp{
+  width:66px;background:var(--bg3);border:1px solid #333;border-radius:6px;
+  color:var(--white);padding:4px 6px;font-size:13px;text-align:right;outline:none;
+}
+.manual-price-inp:focus{border-color:var(--red)}
+.manual-line-sub{color:var(--gray2);font-size:12px}
 .manual-line-del{background:none;border:none;color:#555;font-size:15px;cursor:pointer;padding:2px 5px;line-height:1}
 .manual-line-del:hover{color:#F44336}
 .manual-empty{color:var(--gray2);font-size:13px;font-style:italic;padding:18px 0;text-align:center}
@@ -3655,6 +3661,14 @@ function removeManualLine(idx) {
   renderManualLines()
 }
 
+// Permite ajustar o preço de venta da linha (ex.: pedido antigo vendido a preço diferente do atual)
+function updateManualLinePrice(idx, val) {
+  const p = parseFloat(val)
+  if (isNaN(p) || p < 0) { renderManualLines(); return }
+  manualLines[idx].price = p
+  renderManualLines()
+}
+
 function renderManualLines() {
   const wrap = document.getElementById('manualLines')
   const total = manualLines.reduce((a, l) => a + l.price * l.qty, 0)
@@ -3665,7 +3679,11 @@ function renderManualLines() {
       <div class="manual-line">
         <span class="manual-line-qty">${l.qty}×</span>
         <span class="manual-line-name">${l.name}</span>
-        <span class="manual-line-price">${fmtBRL(l.price * l.qty)}</span>
+        <span class="manual-line-price">
+          R$ <input type="number" class="manual-price-inp" value="${l.price}" min="0" step="0.01"
+               onchange="updateManualLinePrice(${i}, this.value)" title="Preço unitário da venda (editável p/ refletir o preço da época)">
+          <span class="manual-line-sub">= ${fmtBRL(l.price * l.qty)}</span>
+        </span>
         <button class="manual-line-del" onclick="removeManualLine(${i})" title="Remover">✕</button>
       </div>`).join('')
   }
