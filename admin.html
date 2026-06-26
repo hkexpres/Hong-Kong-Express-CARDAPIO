@@ -4001,8 +4001,18 @@ const IFOOD_SKU_MAP = {
   'kung pao frango + carne teriyaki + chow fan cerdo':'CMB-HK',
 }
 
+// Normaliza nome p/ comparação tolerante: minúsculas, qualquer separador/pontuação
+// (·, •, -, parênteses, espaços múltiplos) vira um único espaço. Mantém letras acentuadas.
+// "AGRIPICANTE · Porco", "agripicante • porco", "Agripicante  Porco" → "agripicante porco"
+function normName(s) {
+  return (s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+}
+// Versão normalizada do mapa (chaves sem separadores), construída uma vez
+const IFOOD_SKU_MAP_NORM = Object.fromEntries(
+  Object.entries(IFOOD_SKU_MAP).map(([k, v]) => [normName(k), v]))
+
 // Match an order item to a catalog product.
-// Order of preference: item.sku → product name → iFood name map → SKU in name field.
+// Order of preference: item.sku → product name → iFood name map → SKU in name field → normalizado.
 function findProduct(item, prodBySku, prodByName) {
   if (item.sku && prodBySku[item.sku]) return prodBySku[item.sku]
   // Normaliza: minúsculas + colapsa espaços múltiplos ("AGRIPICANTE  · Porco" → "agripicante · porco")
@@ -4020,6 +4030,14 @@ function findProduct(item, prodBySku, prodByName) {
     if (prodByName[bare]) return prodByName[bare]
     const bareSku = IFOOD_SKU_MAP[bare]
     if (bareSku && prodBySku[bareSku]) return prodBySku[bareSku]
+  }
+  // Último recurso: match normalizado (tolera qualquer separador/pontuação do nome salvo)
+  const nk = normName(item.name)
+  if (nk) {
+    const normSku = IFOOD_SKU_MAP_NORM[nk]
+    if (normSku && prodBySku[normSku]) return prodBySku[normSku]
+    // varre o catálogo comparando nomes normalizados (cobre pratos sem entrada no mapa)
+    for (const key in prodByName) { if (normName(key) === nk) return prodByName[key] }
   }
   return null
 }
