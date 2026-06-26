@@ -1320,6 +1320,8 @@ function initFinancas() {
     document.getElementById('finFrom').value = firstDay.toISOString().split('T')[0]
   if (!document.getElementById('finTo').value)
     document.getElementById('finTo').value = now.toISOString().split('T')[0]
+  // Mostra o período corrente por default ao abrir a aba, sem precisar clicar Filtrar
+  loadFinancas()
 }
 
 // ── DASHBOARD ──
@@ -2342,6 +2344,18 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
     })
   })
 
+  // ── KPIs do PRATO (núcleo do negócio) ──
+  // O prato é a unidade econômica; gyozas/combos/bebidas são ticket e rotação.
+  const nPedidos    = rows.length
+  const pr          = catData['pratos'] || { qty: 0, receita: 0, custo: 0 }
+  const lucroPratos = pr.receita - pr.custo
+  const qtyPratos   = pr.qty
+  const lucroPorPrato  = qtyPratos  > 0 ? lucroPratos / qtyPratos      : 0   // R$ médio que cada prato deixa
+  const margemPrato    = pr.receita > 0 ? lucroPratos / pr.receita * 100 : 0  // ponderada (não média simples)
+  const ticketMedio    = nPedidos   > 0 ? totReceita / nPedidos        : 0
+  const lucroPorPedido = nPedidos   > 0 ? totLucro   / nPedidos        : 0
+  const pratosPorPedido= nPedidos   > 0 ? qtyPratos  / nPedidos        : 0
+
   // ── Monthly chart data ──
   const monthMap = {}
   rows.forEach(r => {
@@ -2443,6 +2457,30 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
         <div class="fin-kpi-label">Margem bruta</div>
         <div class="fin-kpi-val ${totMargem>=40?'green':totMargem>=20?'yellow':'red'}">${totMargem.toFixed(1)}%</div>
         <div class="fin-kpi-sub">sobre receita</div>
+      </div>
+    </div>
+
+    <div class="fin-section-title" style="margin-top:8px">Indicadores-chave do Prato <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· núcleo do negócio</span></div>
+    <div class="fin-kpi-row fin-kpi-row-prato">
+      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
+        <div class="fin-kpi-label">Pratos vendidos</div>
+        <div class="fin-kpi-val yellow">${qtyPratos}</div>
+        <div class="fin-kpi-sub">${pratosPorPedido.toFixed(2)} pratos/pedido</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
+        <div class="fin-kpi-label">Lucro médio por prato</div>
+        <div class="fin-kpi-val ${lucroPorPrato>=0?'green':'red'}">${fmtBRL(lucroPorPrato)}</div>
+        <div class="fin-kpi-sub">lucro de pratos ÷ nº de pratos</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
+        <div class="fin-kpi-label">Margem média por prato</div>
+        <div class="fin-kpi-val ${margemPrato>=40?'green':margemPrato>=20?'yellow':'red'}">${margemPrato.toFixed(1)}%</div>
+        <div class="fin-kpi-sub">ponderada sobre receita de pratos</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
+        <div class="fin-kpi-label">Ticket médio</div>
+        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(ticketMedio)}</div>
+        <div class="fin-kpi-sub">${fmtBRL(lucroPorPedido)} de lucro/pedido</div>
       </div>
     </div>
 
