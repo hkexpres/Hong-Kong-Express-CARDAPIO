@@ -2301,6 +2301,11 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   }
 
   const rows = orders.map(o => ({ ...o, fin: calcOrderFinance(o, prodBySku, prodByName, fichaByProdId, insumoMap) }))
+
+  // Diagnóstico: lista nomes sem correspondência no catálogo (abrir consola p/ ver o nome exato)
+  const _noMatch = {}
+  rows.forEach(r => r.fin.items.forEach(it => { if (it.noMatch) _noMatch[JSON.stringify(it.name)] = (it.sku || '—') }))
+  if (Object.keys(_noMatch).length) console.warn('[Finanças] Itens sem match no catálogo (nome exato → sku):', _noMatch)
   window._finRows = Object.fromEntries(rows.map(r => [r.id, r]))
 
   const totReceita = rows.reduce((a, r) => a + r.fin.receita, 0)
@@ -4000,13 +4005,14 @@ const IFOOD_SKU_MAP = {
 // Order of preference: item.sku → product name → iFood name map → SKU in name field.
 function findProduct(item, prodBySku, prodByName) {
   if (item.sku && prodBySku[item.sku]) return prodBySku[item.sku]
-  const nameKey = (item.name || '').toLowerCase().trim()
+  // Normaliza: minúsculas + colapsa espaços múltiplos ("AGRIPICANTE  · Porco" → "agripicante · porco")
+  const nameKey = (item.name || '').toLowerCase().replace(/\s+/g, ' ').trim()
   if (prodByName[nameKey]) return prodByName[nameKey]
   // iFood / cardápio name format: automatic mapping
   const ifoodSku = IFOOD_SKU_MAP[nameKey]
   if (ifoodSku && prodBySku[ifoodSku]) return prodBySku[ifoodSku]
   // Manual override: type SKU code in the name field (e.g. "CF-FRG")
-  const skuKey = (item.name || '').trim().toUpperCase()
+  const skuKey = (item.name || '').replace(/\s+/g, '').trim().toUpperCase()
   if (prodBySku[skuKey]) return prodBySku[skuKey]
   // Fallback: drop the parenthetical detail ("Coca Zero (350ml)" → "coca zero") and retry
   const bare = nameKey.replace(/\s*\([^)]*\)\s*$/, '').trim()
