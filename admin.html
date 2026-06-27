@@ -2456,34 +2456,27 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   const pratosPorPedido= nPedidos   > 0 ? qtyPratos  / nPedidos        : 0
 
   // ── Ponto de equilíbrio (só quando há custos fixos cadastrados) ──
+  // Meta única em faturamento: custos fixos ÷ margem de contribución (lucro bruto / receita).
+  // Conversor: faturamento médio por prato → permite estimar pratos mentalmente.
   const precoMedioPrato = qtyPratos > 0 ? pr.receita / qtyPratos : 0
-  const breakEvenPratos = (custosFixosTotal > 0 && lucroPorPrato > 0)
-    ? Math.ceil(custosFixosTotal / lucroPorPrato) : null
-  const faltamPratos    = breakEvenPratos != null ? Math.max(0, breakEvenPratos - qtyPratos) : 0
-  const progressoBE     = breakEvenPratos ? Math.min(100, qtyPratos / breakEvenPratos * 100) : 0
   const lucroLiquido    = totLucro - custosFixosTotal
-  // Equilíbrio global (faturamento) = custos fixos ÷ margem de contribución (lucro bruto / receita)
-  // Inclui TODAS as categorias (pratos + combos + gyozas + bebidas)
   const margemContrib   = totReceita > 0 ? totLucro / totReceita : 0
   const breakEvenFat    = (custosFixosTotal > 0 && margemContrib > 0)
     ? custosFixosTotal / margemContrib : null
   const progressoFat    = breakEvenFat ? Math.min(100, totReceita / breakEvenFat * 100) : 0
   const faltamFat       = breakEvenFat != null ? Math.max(0, breakEvenFat - totReceita) : 0
+  // Estimativa de pratos para a meta (aproximada: meta faturamento ÷ faturamento médio por prato)
+  const pratosParaMeta  = (breakEvenFat != null && precoMedioPrato > 0)
+    ? Math.ceil(breakEvenFat / precoMedioPrato) : null
 
-  // Frase "como ler" — explica em linguagem simples, conforme o estado real
+  // Frase "como ler" — em faturamento + conversor por prato, conforme o estado real
   let equilibrioMsg = ''
   if (custosFixosTotal > 0 && breakEvenFat != null) {
-    const cobre = faltamFat <= 0
-    const parteGlobal = cobre
-      ? `<strong style="color:var(--green2)">já cobre seus custos fixos</strong> de ${fmtBRL(custosFixosTotal)}/mês: faturou ${fmtBRL(totReceita)} (precisava de ${fmtBRL(breakEvenFat)}).`
-      : `<strong style="color:var(--yellow)">ainda não cobre</strong> os ${fmtBRL(custosFixosTotal)}/mês de custos fixos: faltam ${fmtBRL(faltamFat)} de faturamento (meta ${fmtBRL(breakEvenFat)}).`
-    let parteEstrut = ''
-    if (breakEvenPratos != null) {
-      parteEstrut = faltamPratos > 0
-        ? ` Só com pratos faltariam <strong>${faltamPratos}</strong> — os complementos (combos, gyozas, bebidas) cobrem essa diferença.`
-        : ` E os pratos sozinhos já cobririam.`
-    }
-    equilibrioMsg = `Com o mix atual do negócio, você ${parteGlobal}${parteEstrut}`
+    const metaPratosTxt = pratosParaMeta != null ? ` (≈ ${pratosParaMeta} pratos)` : ''
+    equilibrioMsg = faltamFat <= 0
+      ? `Você <strong style="color:var(--green2)">já cobre seus custos fixos</strong> de ${fmtBRL(custosFixosTotal)}/mês: faturou ${fmtBRL(totReceita)}, a meta era ${fmtBRL(breakEvenFat)}${metaPratosTxt}.`
+      : `Você <strong style="color:var(--yellow)">ainda não cobre</strong> os ${fmtBRL(custosFixosTotal)}/mês: faltam ${fmtBRL(faltamFat)} de faturamento (meta ${fmtBRL(breakEvenFat)}${metaPratosTxt}).`
+    if (precoMedioPrato > 0) equilibrioMsg += ` Cada prato fatura em média ${fmtBRL(precoMedioPrato)}.`
   }
 
   // ── Monthly chart data ──
@@ -2615,7 +2608,7 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
       </div>
     </div>
     ${custosFixosTotal > 0 ? `
-    <div class="fin-section-title" style="margin-top:8px">Ponto de Equilíbrio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· quanto preciso vender p/ cobrir os custos fixos</span></div>
+    <div class="fin-section-title" style="margin-top:8px">Ponto de Equilíbrio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· quanto preciso faturar p/ cobrir os custos fixos</span></div>
     ${equilibrioMsg ? `<div style="background:rgba(255,255,255,.03);border-left:3px solid ${faltamFat <= 0 ? 'var(--green2)' : 'var(--yellow)'};padding:9px 13px;border-radius:6px;font-size:12.5px;line-height:1.55;color:var(--gray);margin-bottom:14px">
       <strong style="color:var(--white)">Como ler:</strong> ${equilibrioMsg}
     </div>` : ''}
@@ -2625,15 +2618,15 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
         <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(custosFixosTotal)}</div>
         <div class="fin-kpi-sub">${custosFixosItems.length} ${custosFixosItems.length === 1 ? 'item' : 'itens'}</div>
       </div>
-      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Meta conservadora: quantos pratos/mês cobririam os custos fixos se você vendesse SÓ pratos (sem combos, gyozas ou bebidas). = custos fixos ÷ lucro médio por prato.">
-        <div class="fin-kpi-label">Meta só com pratos</div>
-        <div class="fin-kpi-val yellow">${breakEvenPratos != null ? breakEvenPratos + ' pratos' : '—'}</div>
-        <div class="fin-kpi-sub">${breakEvenPratos != null ? '≈ ' + fmtBRL(breakEvenPratos * precoMedioPrato) + '/mês em pratos' : 'lucro/prato ≤ 0 — reveja custos'}</div>
-      </div>
-      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Meta real: faturamento total/mês (pratos + combos + gyozas + bebidas) para cobrir os custos fixos no seu mix atual. = custos fixos ÷ margem de contribución.">
-        <div class="fin-kpi-label">Meta com o mix completo</div>
+      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Quanto você precisa faturar no mês (todo o negócio) para cobrir os custos fixos. = custos fixos ÷ margem de contribución (lucro bruto ÷ receita).">
+        <div class="fin-kpi-label">Meta de faturamento</div>
         <div class="fin-kpi-val yellow">${breakEvenFat != null ? fmtBRL(breakEvenFat) : '—'}</div>
-        <div class="fin-kpi-sub">faturamento/mês · margem ${(margemContrib * 100).toFixed(1)}%</div>
+        <div class="fin-kpi-sub">por mês · ${pratosParaMeta != null ? '≈ ' + pratosParaMeta + ' pratos' : 'margem ≤ 0'}</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Faturamento médio que cada prato vendido gera. Use como conversor: meta de faturamento ÷ este valor ≈ pratos necessários.">
+        <div class="fin-kpi-label">Faturamento médio por prato</div>
+        <div class="fin-kpi-val" style="color:var(--white)">${precoMedioPrato > 0 ? fmtBRL(precoMedioPrato) : '—'}</div>
+        <div class="fin-kpi-sub">seu conversor p/ estimar pratos</div>
       </div>
       <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="O que sobra no período depois de pagar os custos fixos. = lucro bruto − custos fixos. Verde = no azul; vermelho = no vermelho.">
         <div class="fin-kpi-label">Resultado do período</div>
@@ -2641,18 +2634,10 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
         <div class="fin-kpi-sub">lucro bruto − custos fixos</div>
       </div>
     </div>
-    ${breakEvenPratos != null ? `
-    <div style="margin:-6px 0 10px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray);margin-bottom:6px">
-        <span>Pratos: <strong style="color:var(--white)">${qtyPratos}</strong> de ${breakEvenPratos} (meta só pratos)</span>
-        <span style="color:${faltamPratos > 0 ? 'var(--yellow)' : 'var(--green2)'}">${faltamPratos > 0 ? 'faltam ' + faltamPratos + ' pratos' : '✓ atingido'}</span>
-      </div>
-      <div class="margin-bar-bg" style="height:9px"><div class="margin-bar-fill" style="width:${progressoBE}%;height:9px;background:${progressoBE >= 100 ? 'var(--green2)' : 'var(--yellow)'}"></div></div>
-    </div>` : ''}
     ${breakEvenFat != null ? `
-    <div style="margin:0 0 22px">
+    <div style="margin:-2px 0 22px">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray);margin-bottom:6px">
-        <span>Faturamento: <strong style="color:var(--white)">${fmtBRL(totReceita)}</strong> de ${fmtBRL(breakEvenFat)} (meta mix completo)</span>
+        <span>Faturamento: <strong style="color:var(--white)">${fmtBRL(totReceita)}</strong> de ${fmtBRL(breakEvenFat)} (meta)</span>
         <span style="color:${faltamFat > 0 ? 'var(--yellow)' : 'var(--green2)'}">${faltamFat > 0 ? 'faltam ' + fmtBRL(faltamFat) : '✓ atingido'}</span>
       </div>
       <div class="margin-bar-bg" style="height:9px"><div class="margin-bar-fill" style="width:${progressoFat}%;height:9px;background:${progressoFat >= 100 ? 'var(--green2)' : 'var(--yellow)'}"></div></div>
