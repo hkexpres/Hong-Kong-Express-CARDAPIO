@@ -1464,7 +1464,7 @@ function buildDonut(canvasId, centerId, legendId, orders) {
   centerEl.innerHTML = `
     <div class="donut-center-val">${fmtBRL(totalBRL)}</div>
     <div class="donut-center-sub">${totalPratos} pratos · ${orders.length} ped.</div>
-    <div class="donut-center-sub" style="margin-top:0;font-size:10px;color:var(--gray2)">${totalPlatos} produtos no total</div>
+    <div class="donut-center-sub" style="margin-top:0">${totalPlatos} produtos no total</div>
   `
 
   legendEl.innerHTML = sorted.map(([g, v], i) => `
