@@ -1130,6 +1130,20 @@ function endOfDay(date) {
   d.setHours(23, 59, 59, 999)
   return d
 }
+// Conta os meses-calendário tocados por um intervalo [from, to] (datas 'YYYY-MM-DD').
+// Cada mês tocado conta como 1 (custos fixos são compromissos mensais).
+// Ex.: 01/05→27/06 = 2 (maio + junho); 01/06→27/06 = 1.
+function monthsInRange(fromStr, toStr) {
+  if (!fromStr || !toStr) return 1
+  const from = new Date(fromStr + 'T00:00:00')
+  const to   = new Date(toStr + 'T00:00:00')
+  if (isNaN(from) || isNaN(to) || to < from) return 1
+  let count = 0, y = from.getFullYear(), m = from.getMonth()
+  while (y < to.getFullYear() || (y === to.getFullYear() && m <= to.getMonth())) {
+    count++; m++; if (m > 11) { m = 0; y++ }
+  }
+  return Math.max(1, count)
+}
 
 // ── ITEM GROUPS FOR DETALHE TABLE ──
 const ITEM_GROUPS = [
@@ -2459,26 +2473,36 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   const pratosPorPedido= nPedidos   > 0 ? qtyPratos  / nPedidos        : 0
 
   // ── Ponto de equilíbrio (só quando há custos fixos cadastrados) ──
-  // Meta única em faturamento: custos fixos ÷ margem de contribución (lucro bruto / receita).
-  // Conversor: faturamento médio por prato → permite estimar pratos mentalmente.
+  // Custos fixos são mensais → rateia pelos meses do período (2 meses = 2× o custo fixo).
+  const finFromEl = document.getElementById('finFrom')
+  const finToEl   = document.getElementById('finTo')
+  const mesesPeriodo       = monthsInRange(finFromEl && finFromEl.value, finToEl && finToEl.value)
+  const custosFixosPeriodo = custosFixosTotal * mesesPeriodo
+  // Custo total = produção (variável) + fixos do período. Percentuais sobre a receita.
+  const custoTotalPeriodo  = totCusto + custosFixosPeriodo
+  const pctProducao   = totReceita > 0 ? totCusto / totReceita * 100 : 0
+  const pctFixos      = totReceita > 0 ? custosFixosPeriodo / totReceita * 100 : 0
+  const pctCustoTotal = totReceita > 0 ? custoTotalPeriodo / totReceita * 100 : 0
+  // Meta única em faturamento: custos fixos do período ÷ margem de contribución (lucro bruto / receita).
   const precoMedioPrato = qtyPratos > 0 ? pr.receita / qtyPratos : 0
-  const lucroLiquido    = totLucro - custosFixosTotal
+  const lucroLiquido    = totLucro - custosFixosPeriodo
   const margemContrib   = totReceita > 0 ? totLucro / totReceita : 0
-  const breakEvenFat    = (custosFixosTotal > 0 && margemContrib > 0)
-    ? custosFixosTotal / margemContrib : null
+  const breakEvenFat    = (custosFixosPeriodo > 0 && margemContrib > 0)
+    ? custosFixosPeriodo / margemContrib : null
   const progressoFat    = breakEvenFat ? Math.min(100, totReceita / breakEvenFat * 100) : 0
   const faltamFat       = breakEvenFat != null ? Math.max(0, breakEvenFat - totReceita) : 0
   // Estimativa de pratos para a meta (aproximada: meta faturamento ÷ faturamento médio por prato)
   const pratosParaMeta  = (breakEvenFat != null && precoMedioPrato > 0)
     ? Math.ceil(breakEvenFat / precoMedioPrato) : null
+  const periodoTxt = mesesPeriodo === 1 ? 'no mês' : `em ${mesesPeriodo} meses`
 
   // Frase "como ler" — em faturamento + conversor por prato, conforme o estado real
   let equilibrioMsg = ''
   if (custosFixosTotal > 0 && breakEvenFat != null) {
     const metaPratosTxt = pratosParaMeta != null ? ` (≈ ${pratosParaMeta} pratos)` : ''
     equilibrioMsg = faltamFat <= 0
-      ? `Você <strong style="color:var(--green2)">já cobre seus custos fixos</strong> de ${fmtBRL(custosFixosTotal)}/mês: faturou ${fmtBRL(totReceita)}, a meta era ${fmtBRL(breakEvenFat)}${metaPratosTxt}.`
-      : `Você <strong style="color:var(--yellow)">ainda não cobre</strong> os ${fmtBRL(custosFixosTotal)}/mês: faltam ${fmtBRL(faltamFat)} de faturamento (meta ${fmtBRL(breakEvenFat)}${metaPratosTxt}).`
+      ? `Você <strong style="color:var(--green2)">já cobre seus custos fixos</strong> de ${fmtBRL(custosFixosPeriodo)} ${periodoTxt}: faturou ${fmtBRL(totReceita)}, a meta era ${fmtBRL(breakEvenFat)}${metaPratosTxt}.`
+      : `Você <strong style="color:var(--yellow)">ainda não cobre</strong> os ${fmtBRL(custosFixosPeriodo)} de custos fixos ${periodoTxt}: faltam ${fmtBRL(faltamFat)} de faturamento (meta ${fmtBRL(breakEvenFat)}${metaPratosTxt}).`
     if (precoMedioPrato > 0) equilibrioMsg += ` Cada prato fatura em média ${fmtBRL(precoMedioPrato)}.`
   }
 
@@ -2616,31 +2640,35 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
       <strong style="color:var(--white)">Como ler:</strong> ${equilibrioMsg}
     </div>` : ''}
     <div class="fin-kpi-row">
-      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Soma de todos os custos fixos mensais que você cadastrou (aluguel, salários, luz, etc.).">
-        <div class="fin-kpi-label">Custos fixos mensais</div>
-        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(custosFixosTotal)}</div>
-        <div class="fin-kpi-sub">${custosFixosItems.length} ${custosFixosItems.length === 1 ? 'item' : 'itens'}</div>
+      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Custos fixos do período = custo fixo mensal × nº de meses do filtro. Filtrar 2 meses dobra o valor.">
+        <div class="fin-kpi-label">Custos fixos no período</div>
+        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(custosFixosPeriodo)}</div>
+        <div class="fin-kpi-sub">${fmtBRL(custosFixosTotal)}/mês × ${mesesPeriodo} · ${pctFixos.toFixed(1)}% da receita</div>
       </div>
-      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Quanto você precisa faturar no mês (todo o negócio) para cobrir os custos fixos. = custos fixos ÷ margem de contribución (lucro bruto ÷ receita).">
+      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Quanto você precisa faturar no período (todo o negócio) para cobrir os custos fixos. = custos fixos do período ÷ margem de contribución (lucro bruto ÷ receita).">
         <div class="fin-kpi-label">Meta de faturamento</div>
         <div class="fin-kpi-val yellow">${breakEvenFat != null ? fmtBRL(breakEvenFat) : '—'}</div>
-        <div class="fin-kpi-sub">por mês · ${pratosParaMeta != null ? '≈ ' + pratosParaMeta + ' pratos' : 'margem ≤ 0'}</div>
+        <div class="fin-kpi-sub">${periodoTxt} · ${pratosParaMeta != null ? '≈ ' + pratosParaMeta + ' pratos' : 'margem ≤ 0'}</div>
       </div>
       <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Faturamento médio que cada prato vendido gera. Use como conversor: meta de faturamento ÷ este valor ≈ pratos necessários.">
         <div class="fin-kpi-label">Faturamento médio por prato</div>
         <div class="fin-kpi-val" style="color:var(--white)">${precoMedioPrato > 0 ? fmtBRL(precoMedioPrato) : '—'}</div>
         <div class="fin-kpi-sub">seu conversor p/ estimar pratos</div>
       </div>
-      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="O que sobra no período depois de pagar os custos fixos. = lucro bruto − custos fixos. Verde = no azul; vermelho = no vermelho.">
+      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="O que sobra no período depois de pagar TODOS os custos (produção + fixos). = receita − custo total. Verde = no azul; vermelho = no vermelho.">
         <div class="fin-kpi-label">Resultado do período</div>
         <div class="fin-kpi-val ${lucroLiquido >= 0 ? 'green' : 'red'}">${fmtBRL(lucroLiquido)}</div>
-        <div class="fin-kpi-sub">lucro bruto − custos fixos</div>
+        <div class="fin-kpi-sub">receita − custo total · ${totReceita > 0 ? (lucroLiquido / totReceita * 100).toFixed(1) : 0}%</div>
       </div>
+    </div>
+    <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 13px;font-size:12.5px;color:var(--gray);margin-bottom:14px;display:flex;flex-wrap:wrap;gap:6px 22px">
+      <span><strong style="color:var(--white)">Custo total no período:</strong> ${fmtBRL(custoTotalPeriodo)} = <strong style="color:${pctCustoTotal <= 100 ? 'var(--white)' : '#F44336'}">${pctCustoTotal.toFixed(1)}%</strong> da receita</span>
+      <span style="color:var(--gray2)">produção ${fmtBRL(totCusto)} (${pctProducao.toFixed(1)}%) + fixos ${fmtBRL(custosFixosPeriodo)} (${pctFixos.toFixed(1)}%)</span>
     </div>
     ${breakEvenFat != null ? `
     <div style="margin:-2px 0 22px">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray);margin-bottom:6px">
-        <span>Faturamento: <strong style="color:var(--white)">${fmtBRL(totReceita)}</strong> de ${fmtBRL(breakEvenFat)} (meta)</span>
+        <span>Faturamento: <strong style="color:var(--white)">${fmtBRL(totReceita)}</strong> de ${fmtBRL(breakEvenFat)} (meta ${periodoTxt})</span>
         <span style="color:${faltamFat > 0 ? 'var(--yellow)' : 'var(--green2)'}">${faltamFat > 0 ? 'faltam ' + fmtBRL(faltamFat) : '✓ atingido'}</span>
       </div>
       <div class="margin-bar-bg" style="height:9px"><div class="margin-bar-fill" style="width:${progressoFat}%;height:9px;background:${progressoFat >= 100 ? 'var(--green2)' : 'var(--yellow)'}"></div></div>
