@@ -890,6 +890,17 @@ input[type="number"]{-moz-appearance:textfield}
         </div>
       </div>
 
+      <div class="erp-banner" style="margin-top:10px">
+        <div>
+          <strong>📤 Exportar catálogo (Excel)</strong><br>
+          <span style="font-size:12px;color:#aaa">Baixa a planilha com os dados <strong>vivos do sistema</strong> (Firestore): ingredientes, proteínas, molhos, bases, produtos, bebidas, adicionais e combos — para testar preços e combos sem tocar no sistema.</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span id="erpExportStatus" style="font-size:12px;color:#7DB3FF"></span>
+          <button class="art-btn" style="background:rgba(125,179,255,.15);border:1px solid #7DB3FF;color:#cfe3ff" id="erpExportBtn" onclick="exportCatalogoExcel()">Exportar Excel</button>
+        </div>
+      </div>
+
       <div class="art-toolbar">
         <input type="text" id="insNewName" placeholder="Nome do insumo…">
         <select id="insNewType" class="art-inp" style="width:140px">
@@ -3353,6 +3364,193 @@ async function initInsumos() {
   } catch (e) {
     console.error('Insumos load error:', e)
     body.innerHTML = `<tr><td colspan="6" style="color:#F44336;padding:20px;text-align:center">Erro ao carregar: ${e.message}</td></tr>`
+  }
+}
+
+// ── EXPORTAR CATÁLOGO PARA EXCEL (estrutura do ERP, dados vivos do Firestore) ──
+// Replica as 9 abas do Excel do usuário: LEIAME, INGREDIENTES, PROTEINAS, MOLHOS,
+// BASES, PRODUTOS, BEBIDAS, ADICIONAIS, COMBOS. Molhos com receita por lote + custo/L.
+function buildErpSheets(products, insumos, fichas) {
+  const PROTEIN_INGS = ['ING-FRANGO', 'ING-LOMBO', 'ING-COXA']
+  const PROTEIN_NAME = { 'ING-FRANGO': 'frango', 'ING-LOMBO': 'cerdo', 'ING-COXA': 'carne' }
+  const round = (n, d = 4) => (n == null || isNaN(n)) ? '' : +Number(n).toFixed(d)
+
+  const insBySku = {}
+  insumos.forEach(i => { insBySku[i.sku] = { ...i } })
+  recomputeMolhoCosts(insBySku)   // custo dos molhos em cascata (usa MOLHO_RECIPES / recipe)
+  const cpu  = sku => { const i = insBySku[sku]; return i && i.costPerUnit != null ? i.costPerUnit : 0 }
+  const bulk = sku => { const i = insBySku[sku]; return i && i.bulkCost != null ? i.bulkCost : 0 }
+  const nameOf = sku => (insBySku[sku] && insBySku[sku].name) || sku
+  const prodBySku = {}; products.forEach(p => { prodBySku[p.sku] = p })
+  const fichaCost = sku => (fichas[sku] || []).reduce((a, l) => a + (l.qty || 0) * cpu(l.ref), 0)
+
+  const LEIAME = [
+    ['HKE ERP — CONVENÇÕES DE DADOS', '', ''], ['', '', ''],
+    ['ABA', 'CONTEÚDO', 'CHAVE'],
+    ['INGREDIENTES', 'Fonte única de custo de insumos', 'SKU_ING'],
+    ['PROTEINAS', 'Custo por porção da proteína (por prato)', 'VAR+PRATO'],
+    ['MOLHOS', 'Receita por lote + rendimento → custo/L', 'SKU_MOL'],
+    ['BASES', 'Prato SEM proteína [ 1 registro/prato ]', 'BASE_ID'],
+    ['PRODUTOS', 'SKU oficial = BASE + PROTEÍNA', 'SKU'],
+    ['BEBIDAS / ADICIONAIS / COMBOS', 'Venda direta (combos enlazados)', 'SKU'], ['', '', ''],
+    ['COLUNAS DE MARGEM', '', ''],
+    ['MK', 'Múltiplo: preço ÷ custo', ''],
+    ['MARKUP_%', 'Sobre custo: (preço−custo)/custo', ''],
+    ['MARGEM_%', 'Sobre venda: (preço−custo)/preço', ''],
+    ['PREÇO_IFOOD', 'preço venda × 1,15', ''], ['', '', ''],
+    ['NOTA', 'Gerado do sistema (Firestore) — custos dos molhos recalculados em cascata.', ''],
+  ]
+
+  const INGREDIENTES = [
+    ['TABELA MAESTRA DE INGREDIENTES — fonte única de custo', '', '', ''],
+    ['SKU_ING', 'NOME_PT', 'UNIDADE', 'CUSTO_GRANEL_RS'],
+  ]
+  insumos.filter(i => /^ING-/.test(i.sku)).forEach(i =>
+    INGREDIENTES.push([i.sku, i.name, i.bulkUnit, round(i.bulkCost)]))
+
+  const MOLHOS = [['MOLHOS — receita por lote (ml) e rendimento → custo/L', '', '', '', '']]
+  Object.entries(MOLHO_RECIPES).forEach(([sku, r]) => {
+    const recipe = (insBySku[sku] && insBySku[sku].recipe && insBySku[sku].recipe.yield > 0
+      && Array.isArray(insBySku[sku].recipe.components)) ? insBySku[sku].recipe : r
+    MOLHOS.push(['', '', '', '', ''])
+    MOLHOS.push([sku, nameOf(sku), '', '', ''])
+    MOLHOS.push(['SKU_MOL', 'INGREDIENTE', 'QTD_LOTE (ml)', 'CUSTO_UNIT_RS (granel)', 'CUSTO_RS'])
+    let lote = 0
+    recipe.components.forEach(c => {
+      const custoRs = (c.qty || 0) * cpu(c.ref); lote += custoRs
+      MOLHOS.push(['', c.ref, c.qty, round(bulk(c.ref)), round(custoRs)])
+    })
+    MOLHOS.push(['', '', 'RENDIMENTO (ml) →', recipe.yield, ''])
+    MOLHOS.push(['', '', '', 'CUSTO/L →', round(recipe.yield > 0 ? lote / recipe.yield * 1000 : 0)])
+  })
+
+  const BASES_DEF = [
+    ['CF', 'Chao Fan (base)', 'CF-FRG'], ['CM', 'Chao Mein (base)', 'CM-FRG'],
+    ['CS-ARZ', 'Chop Suey Arroz (base)', 'CS-ARZ'], ['CS-SEM', 'Chop Suey Macarrão (base)', 'CS-SEM'],
+    ['SK-ARZ', 'Shitake Agridoce Arroz (base)', 'SK-ARZ'], ['SK-SEM', 'Shitake Agridoce Macarrão (base)', 'SK-SEM'],
+    ['TRY', 'Carne Teriyaki (base)', 'TRY-CRN'], ['AGP', 'Agripicante (base)', 'AGP-FRG'],
+    ['KP', 'Kung Pao (base)', 'KP-FRG'],
+  ]
+  const BASES = [['BASES DE PRATO — tudo menos a proteína (1 registro por prato)', '', '', '', '']]
+  BASES_DEF.forEach(([baseId, label, repSku]) => {
+    BASES.push(['', '', '', '', ''])
+    BASES.push([baseId, label, '', '', ''])
+    BASES.push(['BASE_ID', 'ITEM', 'QTD (g/ml/und)', 'CUSTO_UNIT', 'CUSTO_RS'])
+    let tot = 0
+    ;(fichas[repSku] || []).filter(l => !PROTEIN_INGS.includes(l.ref)).forEach(l => {
+      const custoRs = (l.qty || 0) * cpu(l.ref); tot += custoRs
+      BASES.push(['', l.ref, l.qty, round(bulk(l.ref)), round(custoRs)])
+    })
+    BASES.push(['', '', '', 'CUSTO BASE →', round(tot)])
+  })
+
+  const FAMILIES = [['CF', ['CF-FRG', 'CF-PRC', 'CF-CRN', 'CF-MST']], ['CM', ['CM-FRG', 'CM-PRC', 'CM-CRN', 'CM-MST']],
+    ['AGP', ['AGP-FRG', 'AGP-PRC', 'AGP-MST']], ['KP', ['KP-FRG', 'KP-CRN', 'KP-MST']], ['TRY', ['TRY-CRN']]]
+  const PROTEINAS = [
+    ['PROTEÍNAS — custo por porção (varia por prato)', '', '', '', '', ''],
+    ['VAR', 'NOME', 'PRATO', 'GRAMAGEM_G', 'ING_REF', 'CUSTO_PORCAO_RS'],
+  ]
+  FAMILIES.forEach(([fam, skus]) => {
+    skus.forEach(sku => {
+      const lines = (fichas[sku] || []).filter(l => PROTEIN_INGS.includes(l.ref))
+      if (!lines.length) return
+      const variant = sku.split('-').slice(1).join('-')
+      const custo = lines.reduce((a, l) => a + (l.qty || 0) * cpu(l.ref), 0)
+      let nome
+      if (lines.length > 1) nome = 'Misto ' + lines.map(l => PROTEIN_NAME[l.ref]).join('+')
+      else nome = { FRG: 'Frango', PRC: 'Cerdo (lombo)', CRN: 'Carne (coxa)' }[variant] || variant
+      PROTEINAS.push([variant.replace(/-.*/, ''), nome, fam,
+        lines.length > 1 ? lines.map(l => l.qty).join('+') : lines[0].qty,
+        lines.length > 1 ? lines.map(l => l.ref).join('+') : lines[0].ref, round(custo)])
+    })
+  })
+
+  const IFOOD = 1.15
+  const margemCols = (custo, preco) => {
+    const mk = custo > 0 ? preco / custo : ''
+    const markup = custo > 0 ? (preco - custo) / custo : ''
+    const margem = preco > 0 ? (preco - custo) / preco : ''
+    return [round(custo), preco, round(mk, 9), round(markup, 9), round(margem, 9), round(preco - custo), round(preco * IFOOD, 2)]
+  }
+  const baseIdOf = sku => (/^(CS|SK)-/.test(sku) ? sku : sku.split('-')[0])
+  const protOf = sku => { const s = sku.split('-').slice(1).join('-'); return s || '—' }
+
+  const PRODUTOS = [
+    ['PRODUTOS DE VENDA — custo = base + proteína (SKU oficial)', '', '', '', '', '', '', '', '', '', ''],
+    ['SKU', 'NOME', 'BASE_ID', 'PROTEINA', 'CUSTO_RS', 'PREÇO_VENDA', 'MK', 'MARKUP_%', 'MARGEM_%', 'MARGEM_RS', 'PREÇO_IFOOD'],
+  ]
+  products.filter(p => p.category === 'pratos').forEach(p =>
+    PRODUTOS.push([p.sku, p.name, baseIdOf(p.sku), p.sku.startsWith('TRY') ? 'CRN 240g' : protOf(p.sku),
+      ...margemCols(fichaCost(p.sku), p.price)]))
+
+  const BEBIDAS = [['BEBIDAS', '', '', '', '', '', '', '', ''],
+    ['SKU', 'NOME', 'CUSTO_UND', 'PREÇO_VENDA', 'MK', 'MARKUP_%', 'MARGEM_%', 'MARGEM_RS', 'PREÇO_IFOOD']]
+  products.filter(p => p.category === 'bebidas').forEach(p => BEBIDAS.push([p.sku, p.name, ...margemCols(p.cost, p.price)]))
+
+  const ADICIONAIS = [['ADICIONAIS — Gyoza e Molhos Delivery', '', '', '', '', '', '', '', ''],
+    ['SKU', 'NOME', 'CUSTO_RS', 'PREÇO_VENDA', 'MK', 'MARKUP_%', 'MARGEM_%', 'MARGEM_RS', 'PREÇO_IFOOD']]
+  products.filter(p => p.category === 'acomp' || p.category === 'molhos').forEach(p =>
+    ADICIONAIS.push([p.sku, p.name, ...margemCols(fichas[p.sku] ? fichaCost(p.sku) : p.cost, p.price)]))
+
+  const COMBOS = [['COMBOS — custo enlazado aos pratos componentes', '', '', '', '', '', '', '', '', ''],
+    ['SKU', 'DESCRIÇÃO', 'COMPONENTES', 'PREÇO_LISTA', 'DESCONTO', 'PREÇO_VENDA', 'CUSTO_RS', 'MK', 'MARGEM_%', 'PREÇO_IFOOD']]
+  products.filter(p => p.category === 'combos').forEach(p => {
+    const comps = String(p.components || '').split('+').map(s => s.trim()).filter(Boolean)
+    const lista = comps.reduce((a, sku) => a + ((prodBySku[sku] && prodBySku[sku].price) || 0), 0)
+    const custo = comps.reduce((a, sku) => {
+      const cp = prodBySku[sku]; if (!cp) return a
+      return a + (fichas[sku] ? fichaCost(sku) : cp.cost || 0)
+    }, 0)
+    COMBOS.push([p.sku, p.name, p.components || '', round(lista, 2), round(lista > 0 ? p.price / lista : 0, 4),
+      p.price, round(custo), round(custo > 0 ? p.price / custo : 0, 9),
+      round(p.price > 0 ? (p.price - custo) / p.price : 0, 9), round(p.price * IFOOD, 2)])
+  })
+
+  return { LEIAME, INGREDIENTES, PROTEINAS, MOLHOS, BASES, PRODUTOS, BEBIDAS, ADICIONAIS, COMBOS }
+}
+
+async function exportCatalogoExcel() {
+  const btn = document.getElementById('erpExportBtn')
+  const status = document.getElementById('erpExportStatus')
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando…' }
+  if (status) status.textContent = 'Lendo Firestore…'
+  try {
+    const [prodSnap, insSnap, recSnap] = await Promise.all([
+      db.collection('products').get(),
+      db.collection('insumos').get(),
+      db.collection('recipes').get(),
+    ])
+    const products = prodSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const insumos  = insSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    // fichas (recipes) vêm chaveadas por id do doc do produto → reindexa por SKU
+    const idToSku = {}; products.forEach(p => { idToSku[p.id] = p.sku })
+    const fichas = {}
+    recSnap.docs.forEach(d => {
+      const f = d.data(); if (!f || !Array.isArray(f.lines)) return
+      const sku = idToSku[d.id] || d.id
+      fichas[sku] = f.lines.map(l => ({ ref: l.insumoId, qty: l.qty }))
+    })
+    const sheets = buildErpSheets(products, insumos, fichas)
+    const ORDER = ['LEIAME', 'INGREDIENTES', 'PROTEINAS', 'MOLHOS', 'BASES', 'PRODUTOS', 'BEBIDAS', 'ADICIONAIS', 'COMBOS']
+    const wb = XLSX.utils.book_new()
+    ORDER.forEach(name => {
+      const ws = XLSX.utils.aoa_to_sheet(sheets[name])
+      const maxc = Math.max(...sheets[name].map(r => r.length))
+      ws['!cols'] = Array.from({ length: maxc }, (_, c) => {
+        let w = 10; sheets[name].forEach(r => { if (r[c] != null) w = Math.max(w, String(r[c]).length + 2) })
+        return { wch: Math.min(w, 46) }
+      })
+      XLSX.utils.book_append_sheet(wb, ws, name)
+    })
+    const today = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `HKE_ERP_${today}.xlsx`)
+    if (status) status.textContent = '✓ Baixado'
+    setTimeout(() => { if (status) status.textContent = '' }, 3000)
+  } catch (e) {
+    console.error('Export ERP error:', e)
+    if (status) status.textContent = 'Erro: ' + e.message
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Exportar Excel' }
   }
 }
 
