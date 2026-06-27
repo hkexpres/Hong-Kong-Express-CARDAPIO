@@ -879,18 +879,11 @@ input[type="number"]{-moz-appearance:textfield}
       <div class="fin-config-title">Catálogo de Insumos</div>
       <div class="fin-config-sub">Matéria-prima usada nas fichas técnicas dos pratos: proteínas, vegetais, carboidratos, condimentos, molhos e embalagens — cada um com seu custo. Alimenta o módulo de Consumos para controle e previsão de compras.</div>
 
-      <div class="erp-banner">
-        <div>
-          <strong>📥 Dados do ERP (Excel)</strong><br>
-          <span style="font-size:12px;color:#aaa">Carrega insumos com custo, produtos (preço + custo) e as 19 fichas técnicas. Idempotente — pode rodar várias vezes.</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px">
-          <span id="erpStatus" style="font-size:12px;color:#FFD54F"></span>
-          <button class="art-btn art-btn-primary" id="erpLoadBtn" onclick="loadErpData()">Carregar dados ERP</button>
-        </div>
-      </div>
+      <!-- "Carregar dados ERP" foi removido da UI: sobrescreveria os preços/custos
+           editados ao vivo com o seed embebido. A função loadErpData() segue no JS
+           apenas como escape hatch (re-seed manual via console em base vazia). -->
 
-      <div class="erp-banner" style="margin-top:10px">
+      <div class="erp-banner">
         <div>
           <strong>📤 Exportar catálogo (Excel)</strong><br>
           <span style="font-size:12px;color:#aaa">Baixa a planilha com os dados <strong>vivos do sistema</strong> (Firestore): ingredientes, proteínas, molhos, bases, produtos, bebidas, adicionais e combos — para testar preços e combos sem tocar no sistema.</span>
