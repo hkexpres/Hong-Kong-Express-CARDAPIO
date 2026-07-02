@@ -678,7 +678,7 @@ input[type="number"]{-moz-appearance:textfield}
     <div class="admin-logo">🍜 HKE Admin</div>
     <nav class="admin-tabs">
       <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-      <button class="tab-btn" data-tab="hoje">Hoje <span class="badge hidden" id="pendenteBadge">0</span></button>
+      <button class="tab-btn" data-tab="hoje">Semana <span class="badge hidden" id="pendenteBadge">0</span></button>
       <button class="tab-btn" data-tab="manual">Pedido Manual</button>
       <button class="tab-btn" data-tab="detalhe">Vendas</button>
       <button class="tab-btn" data-tab="crm">CRM</button>
@@ -749,26 +749,26 @@ input[type="number"]{-moz-appearance:textfield}
   <!-- HOJE -->
   <div class="tab-content" id="tab-hoje" style="display:none">
     <div class="hoje-header-row">
-      <div class="hoje-title">Hoje · <span id="hojeDate"></span></div>
+      <div class="hoje-title">Pedidos da semana · <span id="hojeRange"></span></div>
     </div>
     <div class="counters-row">
       <div class="counter-card green">
-        <div class="counter-label">✅ Faturado hoje</div>
+        <div class="counter-label">✅ Faturado na semana</div>
         <div class="counter-val" id="cFaturadoVal">R$ 0,00</div>
         <div class="counter-sub" id="cFaturadoPlatos">0 produtos</div>
       </div>
       <div class="counter-card yellow">
         <div class="counter-label">⏳ Pendentes</div>
         <div class="counter-val" id="cPendentesVal">0</div>
-        <div class="counter-sub">pedidos</div>
+        <div class="counter-sub">a confirmar/cancelar</div>
       </div>
       <div class="counter-card red">
-        <div class="counter-label">❌ Cancelados</div>
+        <div class="counter-label">❌ Cancelados na semana</div>
         <div class="counter-val" id="cCanceladosVal">0</div>
         <div class="counter-sub" id="cCanceladosBRL">R$ 0,00</div>
       </div>
     </div>
-    <div class="orders-section-title">Pedidos do dia</div>
+    <div class="orders-section-title">Pedidos da semana</div>
     <div class="orders-list" id="ordersList">
       <div class="spinner">Carregando…</div>
     </div>
@@ -1324,10 +1324,6 @@ let hojeUnsubscribe = null
 let dashboardRefreshInterval = null
 
 function initAdmin() {
-  // set today's date label
-  document.getElementById('hojeDate').textContent =
-    new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-
   // set default detalhe dates (current month)
   const now = new Date()
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -1632,29 +1628,40 @@ function buildLineChart(orders, nMonths = 12) {
   })
 }
 
-// ── HOJE (realtime) ──
+// ── SEMANA (realtime): pedidos da semana em curso, todos os status ──
 function listenHoje() {
   if (hojeUnsubscribe) hojeUnsubscribe()
-  const today = startOfDay(new Date())
-  const todayEnd = endOfDay(new Date())
+  const now = new Date()
+  const dow = now.getDay() === 0 ? 6 : now.getDay() - 1     // segunda = 0
+  const weekStart = new Date(now); weekStart.setDate(now.getDate() - dow); weekStart.setHours(0, 0, 0, 0)
+  const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6); weekEnd.setHours(23, 59, 59, 999)
 
   hojeUnsubscribe = db.collection('orders')
-    .where('createdAt', '>=', today)
-    .where('createdAt', '<=', todayEnd)
+    .where('createdAt', '>=', weekStart)
+    .where('createdAt', '<=', weekEnd)
     .orderBy('createdAt', 'desc')
     .onSnapshot(snap => {
       const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      renderHoje(orders)
-    }, err => console.error('Hoje listener:', err))
+      renderHoje(orders, weekStart, weekEnd)
+    }, err => console.error('Semana listener:', err))
 }
 
-function renderHoje(orders) {
-  // counters
+// Rótulo do dia: Hoje / Ontem / dia da semana
+function dayLabel(d) {
+  const t = new Date(); t.setHours(0, 0, 0, 0)
+  const x = new Date(d); x.setHours(0, 0, 0, 0)
+  const diff = Math.round((t - x) / 86400000)
+  if (diff === 0) return 'Hoje'
+  if (diff === 1) return 'Ontem'
+  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })
+}
+
+function renderHoje(orders, weekStart, weekEnd) {
   const confirmed  = orders.filter(o => o.status === 'confirmed')
   const pending    = orders.filter(o => o.status === 'pending')
   const cancelled  = orders.filter(o => o.status === 'cancelled')
 
-  // sound notification on new pending orders
+  // som ao chegar novo pendente
   if (prevPendingCount >= 0 && pending.length > prevPendingCount) playNotification()
   prevPendingCount = pending.length
 
@@ -1667,26 +1674,37 @@ function renderHoje(orders) {
   document.getElementById('cPendentesVal').textContent   = pending.length
   document.getElementById('cCanceladosVal').textContent  = cancelled.length
   document.getElementById('cCanceladosBRL').textContent  = fmtBRL(canceladoBRL)
-
-  // badge
-  const badge = document.getElementById('pendenteBadge')
-  if (pending.length > 0) {
-    badge.textContent = pending.length
-    badge.classList.remove('hidden')
-  } else {
-    badge.classList.add('hidden')
+  const rangeEl = document.getElementById('hojeRange')
+  if (rangeEl && weekStart && weekEnd) {
+    const f = d => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    rangeEl.textContent = `${f(weekStart)} → ${f(weekEnd)}`
   }
 
-  // order cards
+  // badge = pendentes da semana (a atender)
+  const badge = document.getElementById('pendenteBadge')
+  if (pending.length > 0) { badge.textContent = pending.length; badge.classList.remove('hidden') }
+  else badge.classList.add('hidden')
+
   const list = document.getElementById('ordersList')
   if (orders.length === 0) {
-    list.innerHTML = '<div class="empty-state">Nenhum pedido hoje ainda.</div>'
+    list.innerHTML = '<div class="empty-state">Nenhum pedido nesta semana ainda.</div>'
     return
   }
 
-  list.innerHTML = orders.map(o => {
+  // agrupa por dia (orders já vêm desc → dias e horas em ordem decrescente)
+  const groups = []; const idx = {}
+  orders.forEach(o => {
+    const d = o.createdAt.toDate()
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+    if (idx[key] == null) { idx[key] = groups.length; groups.push({ date: d, orders: [] }) }
+    groups[idx[key]].orders.push(o)
+  })
+
+  const cardHtml = o => {
     const time     = fmtTime(o.createdAt)
     const itemsStr = (o.items || []).map(it => `${it.qty}x ${it.name}`).join(' · ')
+    const cliente  = o.customer && (o.customer.name || o.customer.phone)
+      ? `<span class="order-cliente" style="color:#888;font-size:12px">· ${o.customer.name || o.customer.phone}</span>` : ''
     const statusClass = o.status === 'confirmed' ? 'status-confirmed' : o.status === 'cancelled' ? 'status-cancelled' : 'status-pending'
     const statusLabel = o.status === 'confirmed' ? '● CONFIRMADO' : o.status === 'cancelled' ? '● CANCELADO' : '● PENDENTE'
     const actions = o.status === 'pending' ? `
@@ -1697,13 +1715,25 @@ function renderHoje(orders) {
     return `
       <div class="order-card">
         <div class="order-card-header">
-          <span class="order-time">${time}</span>
+          <span class="order-time">${time} ${cliente}</span>
           <span class="order-total">${fmtBRL(o.total)}</span>
           <span class="order-status ${statusClass}">${statusLabel}</span>
         </div>
         <div class="order-items">${itemsStr}</div>
         ${actions}
       </div>`
+  }
+
+  list.innerHTML = groups.map(g => {
+    const dConf = g.orders.filter(o => o.status === 'confirmed')
+    const dBRL  = dConf.reduce((a, o) => a + (o.total || 0), 0)
+    const dPend = g.orders.filter(o => o.status === 'pending').length
+    const pendTag = dPend > 0 ? `<span style="color:var(--pending);font-weight:700">${dPend} pendente${dPend > 1 ? 's' : ''}</span> · ` : ''
+    const header = `<div class="hoje-day-header" style="display:flex;justify-content:space-between;align-items:baseline;margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08)">
+      <span style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;color:var(--white);text-transform:capitalize">${dayLabel(g.date)}</span>
+      <span style="font-size:12px;color:var(--gray)">${pendTag}${g.orders.length} pedido${g.orders.length > 1 ? 's' : ''} · ${fmtBRL(dBRL)} faturado</span>
+    </div>`
+    return header + g.orders.map(cardHtml).join('')
   }).join('')
 }
 
