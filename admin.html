@@ -1171,10 +1171,11 @@ function classifyItem(name) {
 
 // ── DISH GROUPING (donas dashboard) ──
 const GROUPS = [
-  { name: 'Chow Fan',       test: n => n.includes('chow fan') },
-  { name: 'Chow Mein',      test: n => n.includes('chow mein') },
+  // tolerante a grafias: "Chow"/"Chao" (cardápio vs. catálogo), "Shitake"/"Shiitake"
+  { name: 'Chow Fan',       test: n => /ch[ao][ow] fan/.test(n) },
+  { name: 'Chow Mein',      test: n => /ch[ao][ow] mein/.test(n) },
   { name: 'Chop Suey',      test: n => n.includes('chop suey') },
-  { name: 'Shiitake Agrid.',test: n => n.includes('shiitake') },
+  { name: 'Shiitake Agrid.',test: n => /shi+take/.test(n) },
   { name: 'Carne Teriyaki', test: n => n.includes('teriyaki') },
   { name: 'Agripicante',    test: n => n.includes('agripicante') },
   { name: 'Kung Pao',       test: n => n.includes('kung pao') },
