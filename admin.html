@@ -1170,8 +1170,38 @@ function classifyItem(name) {
 }
 
 // ── DISH GROUPING (donas dashboard) ──
+// Agrupamento por SKU (fonte de verdade). O prefixo do SKU define a família.
+const SKU_GROUP = [
+  [/^CF-/,       'Chow Fan'],
+  [/^CM-/,       'Chow Mein'],
+  [/^CS-/,       'Chop Suey'],
+  [/^SK-/,       'Shiitake Agrid.'],
+  [/^TRY-/,      'Carne Teriyaki'],
+  [/^AGP-/,      'Agripicante'],
+  [/^KP-/,       'Kung Pao'],
+  [/^GYZ-/,      'Gyoza'],
+  [/^CMB-/,      'Combos'],
+  [/^B-/,        'Bebidas & Molhos'],
+  [/^(SAL-|MO-)/,'Bebidas & Molhos'],
+]
+function groupFromSku(sku) {
+  const s = String(sku || '').toUpperCase()
+  for (const [re, g] of SKU_GROUP) if (re.test(s)) return g
+  return null
+}
+// Categoria a partir do SKU (fonte de verdade)
+function categoryFromSku(sku) {
+  const s = String(sku || '').toUpperCase()
+  if (/^(CF|CM|CS|SK|TRY|AGP|KP)-/.test(s)) return 'pratos'
+  if (/^CMB-/.test(s)) return 'combos'
+  if (/^GYZ-/.test(s)) return 'acomp'
+  if (/^B-/.test(s))   return 'bebidas'
+  if (/^(SAL|MO)-/.test(s)) return 'molhos'
+  return null
+}
+
+// Fallback por nome (só para pedidos antigos sem SKU) — tolerante a grafias
 const GROUPS = [
-  // tolerante a grafias: "Chow"/"Chao" (cardápio vs. catálogo), "Shitake"/"Shiitake"
   { name: 'Chow Fan',       test: n => /ch[ao][ow] fan/.test(n) },
   { name: 'Chow Mein',      test: n => /ch[ao][ow] mein/.test(n) },
   { name: 'Chop Suey',      test: n => n.includes('chop suey') },
@@ -1183,8 +1213,14 @@ const GROUPS = [
   { name: 'Combos',         test: n => n.startsWith('combo') || n.includes(' + ') },
   { name: 'Bebidas & Molhos', test: n => BEBIDA_RE.test(n) || n.includes('molho') || n.includes('salsa') },
 ]
-function groupDish(name) {
-  const n = name.toLowerCase()
+// Recebe o item do pedido: agrupa por SKU; se não houver SKU (pedido antigo), cai no nome.
+function groupDish(item) {
+  if (item && typeof item === 'object') {
+    const bySku = groupFromSku(item.sku)
+    if (bySku) return bySku
+    item = item.name || ''
+  }
+  const n = String(item).toLowerCase()
   for (const g of GROUPS) { if (g.test(n)) return g.name }
   return 'Outros'
 }
@@ -1436,12 +1472,12 @@ function calcGroups(orders) {
   let totalBRL = 0
   orders.forEach(o => {
     ;(o.items || []).forEach(it => {
-      const g = groupDish(it.name)
+      const g = groupDish(it)
       if (!groups[g]) groups[g] = { qty: 0, total: 0 }
       groups[g].qty   += it.qty
       groups[g].total += it.qty * it.price
       totalBRL        += it.qty * it.price
-      if (classifyItem(it.name) === 'pratos') totalPratos += it.qty
+      if ((categoryFromSku(it.sku) || classifyItem(it.name)) === 'pratos') totalPratos += it.qty
     })
     totalPlatos += countPorcoes(o.items)
   })
