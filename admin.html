@@ -654,6 +654,35 @@ input[type="number"]{-moz-appearance:textfield}
 .molho-add-row select{flex:1;min-width:0}
 .molho-cost-line{font-size:11px;color:#888;margin-top:6px;padding-top:6px;border-top:1px solid #1e1e1e}
 .molho-cost-line span{color:#aaa}
+
+/* ══════════════ MOBILE / CELULAR ══════════════ */
+@media (max-width: 820px){
+  /* Cabeçalho: logo + abas roláveis + sair, tudo numa linha compacta */
+  .admin-header{padding:0 10px;gap:8px;height:52px}
+  .admin-logo{font-size:13px}
+  .admin-tabs{min-width:0;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;mask-image:linear-gradient(to right,#000 92%,transparent)}
+  .admin-tabs::-webkit-scrollbar{display:none}
+  .tab-btn{flex:0 0 auto;white-space:nowrap;padding:7px 11px;font-size:12.5px}
+  #logoutBtn{padding:6px 10px;font-size:11px}
+  .tab-content{padding:12px}
+
+  /* KPIs em 2 colunas (título das seções e valores um pouco menores) */
+  .fin-kpi-row{grid-template-columns:1fr 1fr;gap:10px}
+  .fin-kpi-val{font-size:18px}
+  .fin-kpi{padding:12px 12px}
+  .cons-kpi-row{grid-template-columns:1fr 1fr}
+
+  /* Tabelas largas: rolam horizontalmente dentro do seu container */
+  .art-table,.fin-cat-table,.fin-orders-table,.summary-table{font-size:12px}
+
+  /* Pedidos (aba Semana): botões maiores p/ o dedo */
+  .order-actions button{padding:9px 12px;font-size:13px}
+}
+@media (max-width: 460px){
+  .fin-kpi-row,.cons-kpi-row,.counters-row{grid-template-columns:1fr}
+  .fin-kpi-val{font-size:20px}
+  .hoje-title{font-size:15px}
+}
 </style>
 </head>
 <body>
