@@ -1506,11 +1506,12 @@ function buildDonut(canvasId, centerId, legendId, orders) {
     return
   }
 
-  const sorted = Object.entries(groups).sort((a, b) => b[1].total - a[1].total)
+  // Ranking por UNIDADES vendidas (não por faturação)
+  const sorted = Object.entries(groups).sort((a, b) => b[1].qty - a[1].qty)
   const labels = sorted.map(([g]) => g)
-  const data   = sorted.map(([, v]) => v.total)  // BRL por categoria
+  const data   = sorted.map(([, v]) => v.qty)   // unidades por família
   const colors = labels.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
-  const totalBRLSlices = data.reduce((a, b) => a + b, 0) || 1
+  const totalUnits = data.reduce((a, b) => a + b, 0) || 1
 
   centerEl.innerHTML = `
     <div class="donut-center-val">${fmtBRL(totalBRL)}</div>
@@ -1522,7 +1523,7 @@ function buildDonut(canvasId, centerId, legendId, orders) {
     <div class="legend-item">
       <span class="legend-dot" style="background:${colors[i]}"></span>
       <span class="legend-name">${g}</span>
-      <span class="legend-pct">${Math.round(v.total / totalBRLSlices * 100)}%</span>
+      <span class="legend-pct">${v.qty} un · ${Math.round(v.qty / totalUnits * 100)}%</span>
     </div>
   `).join('')
 
@@ -1549,14 +1550,18 @@ function buildDonut(canvasId, centerId, legendId, orders) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx2 => ` ${ctx2.label}: ${fmtBRL(ctx2.raw)} (${Math.round(ctx2.raw / totalBRLSlices * 100)}%)`
+            label: ctx2 => {
+              const pct = Math.round(ctx2.raw / totalUnits * 100)
+              const v = sorted[ctx2.dataIndex] ? sorted[ctx2.dataIndex][1] : { total: 0 }
+              return ` ${ctx2.label}: ${ctx2.raw} un (${pct}%) · ${fmtBRL(v.total)}`
+            }
           }
         },
         datalabels: {
           color: '#000',
           font: { weight: 'bold', size: 11 },
           formatter: (value) => {
-            const pct = Math.round(value / totalBRLSlices * 100)
+            const pct = Math.round(value / totalUnits * 100)
             return pct >= 5 ? pct + '%' : ''
           }
         }
@@ -4444,10 +4449,12 @@ async function loadConsumos() {
       agg[ins.id].qty += confirmedOrders.length
     })
 
-    const totalPlatos = confirmedOrders.reduce((s, o) => s + countPorcoes(o.items), 0)
+    const totalProdutos = confirmedOrders.reduce((s, o) => s + countPorcoes(o.items), 0)
+    const totalPratos   = confirmedOrders.reduce((s, o) => s + (o.items || []).reduce((b, it) =>
+      b + ((categoryFromSku(it.sku) || classifyItem(it.name)) === 'pratos' ? it.qty : 0), 0), 0)
 
-    renderConsumosBanner(banner, confirmedOrders.length, pendingOrders.length, cancelledOrders.length, totalPlatos, fromStr, toStr)
-    renderConsumoCards(cards, agg, confirmedOrders.length, totalPlatos)
+    renderConsumosBanner(banner, confirmedOrders.length, pendingOrders.length, cancelledOrders.length, totalPratos, totalProdutos, fromStr, toStr)
+    renderConsumoCards(cards, agg, confirmedOrders.length, totalPratos, totalProdutos)
     renderConsumoTable(table, agg)
   } catch(e) {
     banner.innerHTML = `<span style="color:#F44336;font-size:13px">Erro: ${e.message}</span>`
@@ -4642,7 +4649,7 @@ function fmtDateBR(str) {
   return `${d}/${m}/${y}`
 }
 
-function renderConsumosBanner(el, confirmed, pending, cancelled, totalPlatos, fromStr, toStr) {
+function renderConsumosBanner(el, confirmed, pending, cancelled, totalPratos, totalProdutos, fromStr, toStr) {
   const parts = []
   if (pending   > 0) parts.push(`<span style="color:var(--yellow)">${pending} pendente${pending > 1 ? 's' : ''}</span>`)
   if (cancelled > 0) parts.push(`<span style="color:#F44336">${cancelled} cancelado${cancelled > 1 ? 's' : ''}</span>`)
@@ -4654,7 +4661,7 @@ function renderConsumosBanner(el, confirmed, pending, cancelled, totalPlatos, fr
   el.innerHTML = `<div style="display:flex;gap:20px;align-items:center;background:rgba(255,255,255,.04);border:1px solid #333;border-radius:10px;padding:12px 16px;flex-wrap:wrap;font-size:13px">
     ${rangeLabel}
     <span><strong style="color:var(--green2);font-size:16px">${confirmed}</strong> pedidos confirmados</span>
-    <span><strong style="color:var(--white);font-size:16px">${totalPlatos ?? 0}</strong> platos</span>
+    <span><strong style="color:var(--white);font-size:16px">${totalPratos ?? 0}</strong> pratos · <strong style="color:var(--white);font-size:16px">${totalProdutos ?? 0}</strong> produtos</span>
     ${parts.length > 0 ? `<span style="color:#888">excluídos: ${parts.join(' · ')}</span>` : ''}
     <span style="color:#888">Bolsas de papel: <strong style="color:var(--white)">${confirmed}</strong> (1 por pedido)</span>
   </div>`
@@ -4673,7 +4680,7 @@ const CONS_TYPE_COLORS = {
 }
 let consDonutChart = null
 
-function renderConsumoCards(el, agg, orderCount, totalPlatos) {
+function renderConsumoCards(el, agg, orderCount, totalPratos, totalProdutos) {
   const byType = {}
   Object.values(agg).forEach(item => {
     if (!byType[item.type]) byType[item.type] = { cost: 0, count: 0 }
@@ -4683,7 +4690,7 @@ function renderConsumoCards(el, agg, orderCount, totalPlatos) {
 
   const grandTotal = Object.values(byType).reduce((s, g) => s + g.cost, 0)
   const perOrder   = orderCount > 0 ? grandTotal / orderCount : 0
-  const perPlato   = totalPlatos > 0 ? grandTotal / totalPlatos : 0
+  const perPrato   = totalPratos > 0 ? grandTotal / totalPratos : 0
   const ICONS = { proteína:'🥩', vegetal:'🥦', carbohidrato:'🍚', condimento:'🧴', molho:'🥣', empaque:'📦', acomp:'🥟' }
 
   const kpiBanner = document.getElementById('consKpiBanner')
@@ -4693,15 +4700,15 @@ function renderConsumoCards(el, agg, orderCount, totalPlatos) {
       <div>
         <div class="cons-kpi-label">Custo total</div>
         <div class="cons-kpi-val">${fmtBRL(grandTotal)}</div>
-        <div class="cons-kpi-sub">${orderCount} pedido${orderCount !== 1 ? 's' : ''} · ${totalPlatos ?? 0} platos</div>
+        <div class="cons-kpi-sub">${orderCount} pedido${orderCount !== 1 ? 's' : ''} · ${totalPratos ?? 0} pratos · ${totalProdutos ?? 0} produtos</div>
       </div>
     </div>
-    <div class="cons-kpi-card">
+    <div class="cons-kpi-card" title="Custo de insumos consumidos ÷ nº de pratos vendidos (inclui embalagem e acompanhamentos).">
       <div class="cons-kpi-icon">🧾</div>
       <div>
         <div class="cons-kpi-label">Custo / pedido</div>
         <div class="cons-kpi-val">${fmtBRL(perOrder)}</div>
-        <div class="cons-kpi-sub">${fmtBRL(perPlato)} / plato</div>
+        <div class="cons-kpi-sub">${fmtBRL(perPrato)} / prato</div>
       </div>
     </div>
   </div>`
