@@ -1513,11 +1513,11 @@ async function syncPricesFromFirestore() {
     const fmt2 = v => 'R$ ' + v.toFixed(2).replace('.', ',')
     const resolve = (sku, name) => bySku[sku] ?? byName[name] ?? null
     const apply = (priceEl, price, f) => { if (priceEl && price != null) priceEl.textContent = (f || fmt)(price) }
-    // marca chips de produtos inativos
-    const markInactive = chip => {
-      chip.style.opacity = '.45'
-      chip.style.filter  = 'grayscale(1)'
-      const pr = chip.querySelector('.pchip-price')
+    // marca elementos de produtos inativos (cinza + "Esgotado" no lugar do preço)
+    const markInactive = (el, priceSel) => {
+      el.style.opacity = '.45'
+      el.style.filter  = 'grayscale(1)'
+      const pr = priceSel ? el.querySelector(priceSel) : null
       if (pr) pr.textContent = 'Esgotado'
     }
 
@@ -1532,7 +1532,7 @@ async function syncPricesFromFirestore() {
         const labelEl = chip.querySelector('.pchip-label')
         if (!labelEl) return
         const sku = chip.dataset.sku
-        if (sku && inactive.has(sku)) { markInactive(chip); return }
+        if (sku && inactive.has(sku)) { markInactive(chip, '.pchip-price'); return }
         const fullName = dishName + ' · ' + labelEl.textContent.trim()
         apply(chip.querySelector('.pchip-price'), resolve(sku, fullName))
       })
@@ -1542,14 +1542,18 @@ async function syncPricesFromFirestore() {
     document.querySelectorAll('.combo-card').forEach(card => {
       const nameEl = card.querySelector('.combo-name')
       if (!nameEl) return
-      apply(card.querySelector('.combo-price'), resolve(card.dataset.sku, nameEl.textContent.trim()))
+      const sku = card.dataset.sku
+      if (sku && inactive.has(sku)) { markInactive(card, '.combo-price'); return }
+      apply(card.querySelector('.combo-price'), resolve(sku, nameEl.textContent.trim()))
     })
 
     // 3) Gyozas: gprice with data-sku
     document.querySelectorAll('.gprice').forEach(g => {
       const qtyEl = g.querySelector('.gprice-qty')
       if (!qtyEl) return
-      apply(g.querySelector('.gprice-val'), resolve(g.dataset.sku, 'Gyoza ' + qtyEl.textContent.trim()))
+      const sku = g.dataset.sku
+      if (sku && inactive.has(sku)) { markInactive(g, '.gprice-val'); return }
+      apply(g.querySelector('.gprice-val'), resolve(sku, 'Gyoza ' + qtyEl.textContent.trim()))
     })
 
     // 4) Molhos extras: salsa-chip with data-sku (formato 2 decimais)
@@ -1557,9 +1561,11 @@ async function syncPricesFromFirestore() {
       const nameEl = s.querySelector('.salsa-nombre')
       const mlEl = s.querySelector('.salsa-ml')
       if (!nameEl) return
+      const sku = s.dataset.sku
+      if (sku && inactive.has(sku)) { markInactive(s, '.salsa-precio'); return }
       const ml = mlEl ? ' ' + mlEl.textContent.trim() : ''
       const fullName = 'Molho ' + nameEl.textContent.trim() + ml
-      apply(s.querySelector('.salsa-precio'), resolve(s.dataset.sku, fullName), fmt2)
+      apply(s.querySelector('.salsa-precio'), resolve(sku, fullName), fmt2)
     })
 
     // 5) Bebidas: div com data-sku (formato 2 decimais)
@@ -1570,8 +1576,14 @@ async function syncPricesFromFirestore() {
       const nameSpan = Array.from(spans).find(s => /F0E870/i.test(s.getAttribute('style') || ''))
       const detailSpan = Array.from(spans).find(s => /#999/i.test(s.getAttribute('style') || ''))
       if (!nameSpan || !priceSpan) return
+      const sku = d.dataset.sku
+      if (sku && inactive.has(sku)) {
+        d.style.opacity = '.45'; d.style.filter = 'grayscale(1)'
+        priceSpan.textContent = 'Esgotado'
+        return
+      }
       const name = nameSpan.textContent.trim() + (detailSpan ? ' (' + detailSpan.textContent.trim() + ')' : '')
-      apply(priceSpan, resolve(d.dataset.sku, name), fmt2)
+      apply(priceSpan, resolve(sku, name), fmt2)
     })
 
     // 6) Mais Pedidos: bs-item with data-sku
