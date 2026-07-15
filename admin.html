@@ -1866,7 +1866,9 @@ function editPopulateCats() {
 function editPopulateProducts() {
   const cat = document.getElementById('editCatSel').value
   const sel = document.getElementById('editProdSel')
-  const items = (cachedUniqueItems || []).filter(it => it.cat === cat)
+  // Só produtos do catálogo (com SKU) — preço autoritativo. Evita nomes/preços
+  // stale vindos do histórico de pedidos.
+  const items = (cachedUniqueItems || []).filter(it => it.cat === cat && it.sku)
   sel.innerHTML = items.length
     ? items.map(it => `<option value="${it.name.replace(/"/g, '&quot;')}">${it.name}${it.price ? (' — ' + fmtBRL(it.price)) : ''}</option>`).join('')
     : '<option value="">— sem itens —</option>'
@@ -1883,7 +1885,9 @@ function editAddFromCatalog() {
   const name = document.getElementById('editProdSel').value
   if (!name) return
   const qty = Math.max(1, parseInt(document.getElementById('editQty').value) || 1)
-  const prod = (cachedUniqueItems || []).find(it => it.name === name) || {}
+  // pega o item do catálogo (com SKU) → preço correto, não o do histórico
+  const prod = (cachedUniqueItems || []).find(it => it.name === name && it.sku)
+            || (cachedUniqueItems || []).find(it => it.name === name) || {}
   editMergeLine(name, prod.price != null ? prod.price : 0, qty, prod.sku)
   document.getElementById('editQty').value = '1'
 }
