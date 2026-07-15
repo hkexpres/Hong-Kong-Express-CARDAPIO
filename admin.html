@@ -203,6 +203,13 @@ input{font-family:'Inter',sans-serif}
   border:1px solid rgba(244,67,54,0.25);
 }
 .btn-cancel:hover{background:rgba(244,67,54,0.2)}
+.btn-edit{
+  flex:1;padding:9px;border-radius:8px;
+  background:rgba(125,179,255,0.12);color:#7DB3FF;
+  font-size:13px;font-weight:600;transition:background .15s;
+  border:1px solid rgba(125,179,255,0.3);
+}
+.btn-edit:hover{background:rgba(125,179,255,0.22)}
 .empty-state{text-align:center;color:var(--gray2);font-size:14px;padding:40px 0}
 
 /* ── DETALHE ── */
@@ -1777,6 +1784,10 @@ function renderHoje(orders, weekStart, weekEnd) {
     groups[idx[key]].orders.push(o)
   })
 
+  // guarda os pedidos p/ o editor acessar por id
+  window._semanaOrders = {}
+  orders.forEach(o => { window._semanaOrders[o.id] = o })
+
   const cardHtml = o => {
     const time     = fmtTime(o.createdAt)
     const itemsStr = (o.items || []).map(it => `${it.qty}x ${it.name}`).join(' · ')
@@ -1784,11 +1795,15 @@ function renderHoje(orders, weekStart, weekEnd) {
       ? `<span class="order-cliente" style="color:#888;font-size:12px">· ${o.customer.name || o.customer.phone}</span>` : ''
     const statusClass = o.status === 'confirmed' ? 'status-confirmed' : o.status === 'cancelled' ? 'status-cancelled' : 'status-pending'
     const statusLabel = o.status === 'confirmed' ? '● CONFIRMADO' : o.status === 'cancelled' ? '● CANCELADO' : '● PENDENTE'
-    const actions = o.status === 'pending' ? `
-      <div class="order-actions">
-        <button class="btn-confirm" onclick="updateStatus('${o.id}','confirmed')">✔ Confirmar</button>
-        <button class="btn-cancel"  onclick="updateStatus('${o.id}','cancelled')">✕ Cancelar</button>
-      </div>` : ''
+    const editBtn = o.status !== 'cancelled'
+      ? `<button class="btn-edit" onclick="openEditOrder('${o.id}')">✎ Editar</button>` : ''
+    const actions = o.status === 'pending'
+      ? `<div class="order-actions">
+          <button class="btn-confirm" onclick="updateStatus('${o.id}','confirmed')">✔ Confirmar</button>
+          <button class="btn-cancel"  onclick="updateStatus('${o.id}','cancelled')">✕ Cancelar</button>
+          ${editBtn}
+        </div>`
+      : (editBtn ? `<div class="order-actions">${editBtn}</div>` : '')
     return `
       <div class="order-card">
         <div class="order-card-header">
@@ -1820,6 +1835,117 @@ async function updateStatus(id, status) {
   } catch(e) {
     console.error('updateStatus:', e)
   }
+}
+
+// ── EDITAR PEDIDO (da aba Semana) ──
+let editOrderState = { id: null, items: [], customer: null }
+
+async function openEditOrder(id) {
+  const o = (window._semanaOrders || {})[id]
+  if (!o) return
+  editOrderState = {
+    id,
+    items: (o.items || []).map(it => ({ name: it.name, price: Number(it.price) || 0, qty: Number(it.qty) || 1, ...(it.sku ? { sku: it.sku } : {}) })),
+    customer: o.customer || null
+  }
+  document.getElementById('editOrderTitle').textContent = 'Editar pedido · ' + fmtTime(o.createdAt)
+  document.getElementById('editOrderModal').style.display = 'flex'
+  renderEditOrder()
+  try { await fetchUniqueItems(); editPopulateCats(); editPopulateProducts() }
+  catch (e) { console.error('editOrder catálogo:', e) }
+}
+
+function closeEditOrder() { document.getElementById('editOrderModal').style.display = 'none' }
+
+function editPopulateCats() {
+  const sel = document.getElementById('editCatSel')
+  const cats = ['pratos', 'combos', 'acomp', 'bebidas', 'molhos']
+  sel.innerHTML = cats.map(c => `<option value="${c}">${CAT_LABELS[c] || c}</option>`).join('')
+}
+
+function editPopulateProducts() {
+  const cat = document.getElementById('editCatSel').value
+  const sel = document.getElementById('editProdSel')
+  const items = (cachedUniqueItems || []).filter(it => it.cat === cat)
+  sel.innerHTML = items.length
+    ? items.map(it => `<option value="${it.name.replace(/"/g, '&quot;')}">${it.name}${it.price ? (' — ' + fmtBRL(it.price)) : ''}</option>`).join('')
+    : '<option value="">— sem itens —</option>'
+}
+
+function editMergeLine(name, price, qty, sku) {
+  const ex = editOrderState.items.find(l => l.name === name && l.price === price)
+  if (ex) ex.qty += qty
+  else editOrderState.items.push({ name, price: Number(price) || 0, qty, ...(sku ? { sku } : {}) })
+  renderEditOrder()
+}
+
+function editAddFromCatalog() {
+  const name = document.getElementById('editProdSel').value
+  if (!name) return
+  const qty = Math.max(1, parseInt(document.getElementById('editQty').value) || 1)
+  const prod = (cachedUniqueItems || []).find(it => it.name === name) || {}
+  editMergeLine(name, prod.price != null ? prod.price : 0, qty, prod.sku)
+  document.getElementById('editQty').value = '1'
+}
+
+function editAddAvulso() {
+  const nameEl = document.getElementById('editAvulsoName')
+  const name = nameEl.value.trim()
+  if (!name) { nameEl.focus(); return }
+  const price = parseFloat(document.getElementById('editAvulsoPrice').value) || 0
+  const qty = Math.max(1, parseInt(document.getElementById('editAvulsoQty').value) || 1)
+  editMergeLine(name, price, qty, null)
+  nameEl.value = ''; document.getElementById('editAvulsoPrice').value = ''; document.getElementById('editAvulsoQty').value = '1'
+}
+
+function editItemQty(i, delta) {
+  const l = editOrderState.items[i]; if (!l) return
+  l.qty += delta
+  if (l.qty <= 0) editOrderState.items.splice(i, 1)
+  renderEditOrder()
+}
+function editItemPrice(i, val) {
+  const l = editOrderState.items[i]; if (!l) return
+  const p = parseFloat(val); if (!isNaN(p) && p >= 0) l.price = p
+  renderEditOrder()
+}
+function editRemoveItem(i) { editOrderState.items.splice(i, 1); renderEditOrder() }
+
+function renderEditOrder() {
+  const wrap = document.getElementById('editOrderLines')
+  const its = editOrderState.items
+  const stepBtn = 'width:26px;height:26px;border-radius:50%;border:1px solid #444;background:var(--bg3);color:var(--white);font-size:15px;line-height:1;cursor:pointer'
+  if (!its.length) {
+    wrap.innerHTML = '<div style="color:#777;padding:12px 0;font-size:13px">Nenhum item. Adicione abaixo.</div>'
+  } else {
+    wrap.innerHTML = its.map((l, i) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+        <span style="flex:1;color:var(--white);font-size:13px;min-width:0">${l.name}</span>
+        <button onclick="editItemQty(${i},-1)" style="${stepBtn}">−</button>
+        <span style="min-width:18px;text-align:center;color:var(--yellow);font-weight:700">${l.qty}</span>
+        <button onclick="editItemQty(${i},1)" style="${stepBtn}">+</button>
+        <span style="color:#888;font-size:12px">R$</span>
+        <input type="number" value="${l.price}" min="0" step="0.01" onchange="editItemPrice(${i},this.value)"
+          style="width:66px;text-align:right;background:var(--bg3);border:1px solid #333;border-radius:6px;color:var(--white);padding:4px 6px;font-size:13px">
+        <button onclick="editRemoveItem(${i})" title="Remover" style="background:none;border:none;color:#666;font-size:15px;cursor:pointer;padding:2px 4px">✕</button>
+      </div>`).join('')
+  }
+  const total = its.reduce((a, l) => a + (Number(l.price) || 0) * (Number(l.qty) || 0), 0)
+  document.getElementById('editOrderTotal').textContent = fmtBRL(total)
+}
+
+async function saveEditOrder() {
+  if (!editOrderState.id) return
+  if (!editOrderState.items.length) { alert('O pedido precisa de ao menos um item.'); return }
+  const btn = document.getElementById('editSaveBtn')
+  btn.disabled = true; btn.textContent = 'Salvando…'
+  try {
+    const items = editOrderState.items.map(l => ({ name: l.name, price: Number(l.price) || 0, qty: Number(l.qty) || 1, ...(l.sku ? { sku: l.sku } : {}) }))
+    const total = items.reduce((a, l) => a + l.price * l.qty, 0)
+    await db.collection('orders').doc(editOrderState.id).update({ items, total })
+    closeEditOrder()   // o listener em tempo real re-renderiza a card
+  } catch (e) { alert('Erro ao salvar: ' + e.message) }
+  finally { btn.disabled = false; btn.textContent = 'Salvar alterações' }
 }
 
 // ── DETALHE ──
@@ -4894,6 +5020,39 @@ function renderConsumoTable(el, agg) {
     </div>
     <div id="orderModalDateEdit" style="margin-top:14px"></div>
     <div id="orderModalActions" style="margin-top:16px"></div>
+  </div>
+</div>
+
+<!-- EDITAR PEDIDO -->
+<div id="editOrderModal" class="order-modal-overlay" style="display:none" onclick="if(event.target===this)closeEditOrder()">
+  <div class="order-modal" style="max-width:540px">
+    <div class="order-modal-header">
+      <div class="order-modal-title" id="editOrderTitle">Editar pedido</div>
+      <button class="order-modal-close" onclick="closeEditOrder()">✕</button>
+    </div>
+    <div id="editOrderLines"></div>
+
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #2a2a2a">
+      <div style="font-size:12px;color:var(--gray);margin-bottom:8px">Adicionar do catálogo</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="editCatSel" class="art-inp" style="width:120px" onchange="editPopulateProducts()"></select>
+        <select id="editProdSel" class="art-inp" style="flex:1;min-width:150px"></select>
+        <input id="editQty" type="number" class="art-inp" style="width:60px" min="1" value="1">
+        <button class="art-btn art-btn-primary" onclick="editAddFromCatalog()">+ Add</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+        <input id="editAvulsoName" class="art-inp" style="flex:1;min-width:150px" placeholder="Item avulso (fora do catálogo)">
+        <input id="editAvulsoPrice" type="number" class="art-inp" style="width:90px" min="0" step="0.01" placeholder="R$">
+        <input id="editAvulsoQty" type="number" class="art-inp" style="width:60px" min="1" value="1">
+        <button class="art-btn" style="background:rgba(255,255,255,.07);border:1px solid #444" onclick="editAddAvulso()">+ Avulso</button>
+      </div>
+    </div>
+
+    <div class="order-modal-total" style="margin-top:14px"><span>Total</span><span id="editOrderTotal">R$ 0,00</span></div>
+    <div style="margin-top:16px;display:flex;gap:10px">
+      <button class="art-btn" style="flex:0 0 auto;background:transparent;border:1px solid #444;color:var(--gray)" onclick="closeEditOrder()">Cancelar</button>
+      <button class="art-btn art-btn-primary" style="flex:1" id="editSaveBtn" onclick="saveEditOrder()">Salvar alterações</button>
+    </div>
   </div>
 </div>
 </body>
