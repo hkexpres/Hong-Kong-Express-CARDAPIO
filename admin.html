@@ -1285,6 +1285,7 @@ function setDateLabel(elId, from, to) {
 }
 let allDashboardOrders = []
 let detalheSummaryData = []
+let detalheProdData = []   // agregação por SKU (mescla variantes de nome) p/ o donut de pratos
 
 // ── AUDIO NOTIFICATION ──
 let audioCtx = null
@@ -2126,6 +2127,17 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
     .map(([name, v]) => ({ name, ...v }))
     .sort((a, b) => b.total - a.total)
 
+  // Agregação por SKU — mescla variantes de nome (Chao/Chow, maiúsc/minúsc) do mesmo produto
+  const prodMap = {}
+  orders.forEach(o => (o.items || []).forEach(it => {
+    const cat = categoryFromSku(it.sku) || classifyItem(it.name)
+    const key = it.sku || ('_' + (it.name || '').toLowerCase().replace(/\s+/g, ' ').trim())
+    if (!prodMap[key]) prodMap[key] = { sku: it.sku || null, name: it.name, qty: 0, total: 0, group: cat }
+    prodMap[key].qty   += it.qty
+    prodMap[key].total += it.qty * it.price
+  }))
+  detalheProdData = Object.values(prodMap).sort((a, b) => b.total - a.total)
+
   // Helper: format a group cell (qty + BRL)
   const gFmt = v => v.brl > 0
     ? `<span style="color:#F0E870;font-weight:600">${fmtBRL(v.brl)}</span><br><span style="color:#888;font-size:11px">${v.qty} un</span>`
@@ -2166,8 +2178,23 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
     catTotals[d.group].total += d.total
   })
 
+  // KPIs do período
+  const nPedidos    = orders.length
+  const totalUnits  = detalheSummaryData.reduce((a, d) => a + d.qty, 0)
+  const ticketMedio = nPedidos > 0 ? grand.total / nPedidos : 0
+  const prodPorPed  = nPedidos > 0 ? totalUnits / nPedidos : 0
+
+  const kpiBar = `
+    <div style="display:flex;gap:24px;flex-wrap:wrap;background:var(--bg2);border:1px solid rgba(144,64,64,0.2);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:13px">
+      <span>Pedidos: <strong style="color:var(--white);font-size:15px">${nPedidos}</strong></span>
+      <span>Ticket médio: <strong style="color:var(--yellow);font-size:15px">${fmtBRL(ticketMedio)}</strong></span>
+      <span>Produtos/pedido: <strong style="color:var(--white);font-size:15px">${prodPorPed.toFixed(2)}</strong></span>
+      <span>Produtos: <strong style="color:var(--white);font-size:15px">${totalUnits}</strong></span>
+    </div>`
+
   el.innerHTML = `
     ${banner}
+    ${kpiBar}
     <div class="detalhe-bottom">
       <div class="summary-card">
         <div class="summary-card-title">Subtotal por item</div>
@@ -2186,18 +2213,14 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
         <div id="summaryTableWrap"></div>
       </div>
       <div class="summary-card">
-        <div class="summary-card-title">Participação por item</div>
+        <div class="summary-card-title">Ranking de pratos <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400;font-size:11px">· por unidades</span></div>
         <div class="donut-wrap" style="width:180px;height:180px;margin:0 auto 12px">
           <canvas id="detalheDonut"></canvas>
           <div class="donut-center-text" id="detalheDonutCenter"></div>
         </div>
         <div class="donut-legend" id="detalheDonutLegend"></div>
         <div class="summary-card-title" style="margin-top:22px">Participação por categoria</div>
-        <div class="donut-wrap" style="width:180px;height:180px;margin:0 auto 12px">
-          <canvas id="catDonut"></canvas>
-          <div class="donut-center-text" id="catDonutCenter"></div>
-        </div>
-        <div class="donut-legend" id="catDonutLegend"></div>
+        <div id="catBars" style="margin-top:10px"></div>
       </div>
     </div>
     <div class="detalhe-table-wrap" style="margin-top:20px">
@@ -2228,7 +2251,7 @@ function updateSummarySection() {
 
   if (!filtered.length) {
     wrap.innerHTML = '<div style="color:#666;font-size:13px;padding:12px 0">Nenhum grupo selecionado.</div>'
-    buildDetalheDonut([]); buildCategoryDonut([])
+    buildPratoDonut([]); renderCategoryBars([])
     return
   }
 
@@ -2253,39 +2276,38 @@ function updateSummarySection() {
       </tbody>
     </table>`
 
-  buildDetalheDonut(filtered)
-  buildCategoryDonut(filtered)
+  // Ranking de pratos: sempre por SKU (mescla variantes), respeitando o filtro "Pratos"
+  const pratos = checked.includes('pratos') ? detalheProdData.filter(d => d.group === 'pratos') : []
+  buildPratoDonut(pratos)
+  renderCategoryBars(filtered)
 }
 
-function buildDetalheDonut(data) {
+// Donut do RANKING DE PRATOS — por unidades (dados já mesclados por SKU)
+function buildPratoDonut(data) {
   const canvas = document.getElementById('detalheDonut')
   const centerEl = document.getElementById('detalheDonutCenter')
   const legendEl = document.getElementById('detalheDonutLegend')
   if (!canvas) return
   if (detalheDonutChart) { detalheDonutChart.destroy(); detalheDonutChart = null }
 
-  if (!data.length) {
+  // ordena por unidades desc
+  const sorted = (data || []).slice().sort((a, b) => b.qty - a.qty)
+  if (!sorted.length) {
     if (centerEl) centerEl.innerHTML = '<span style="color:#666;font-size:12px">Sem dados</span>'
     if (legendEl) legendEl.innerHTML = ''
     return
   }
 
-  const total  = data.reduce((a, d) => a + d.total, 0)
-  // top 9 + "Outros" (resto agrupado) → o donut soma 100%
-  const N = 9
-  const items = data.slice(0, N).map(d => ({ name: d.name, total: d.total, qty: d.qty }))
-  const rest  = data.slice(N)
-  if (rest.length) items.push({
-    name: `Outros (${rest.length})`,
-    total: rest.reduce((a, d) => a + d.total, 0),
-    qty:   rest.reduce((a, d) => a + d.qty, 0)
-  })
-  const top    = items
-  const labels = top.map(d => d.name.length > 22 ? d.name.slice(0, 22) + '…' : d.name)
-  const values = top.map(d => d.total)
-  const colors = top.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
+  const totalQty = sorted.reduce((a, d) => a + d.qty, 0) || 1
+  const N = 10
+  const items = sorted.slice(0, N).map(d => ({ name: d.name, qty: d.qty }))
+  const rest  = sorted.slice(N)
+  if (rest.length) items.push({ name: `Outros (${rest.length})`, qty: rest.reduce((a, d) => a + d.qty, 0) })
+  const labels = items.map(d => d.name.length > 22 ? d.name.slice(0, 22) + '…' : d.name)
+  const values = items.map(d => d.qty)
+  const colors = items.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
 
-  if (centerEl) centerEl.innerHTML = `<div class="donut-center-val" style="font-size:12px">${fmtBRL(total)}</div>`
+  if (centerEl) centerEl.innerHTML = `<div class="donut-center-val" style="font-size:15px">${totalQty}</div><div style="font-size:10px;color:#888">pratos</div>`
 
   const ctx = canvas.getContext('2d')
   detalheDonutChart = new Chart(ctx, {
@@ -2295,35 +2317,27 @@ function buildDetalheDonut(data) {
       cutout: '65%',
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: c => ` ${c.label}: ${fmtBRL(c.raw)} (${Math.round(c.raw / total * 100)}%)` } },
-        datalabels: {
-          color: '#000', font: { weight: 'bold', size: 10 },
-          formatter: v => { const p = Math.round(v / total * 100); return p >= 6 ? p + '%' : '' }
-        }
+        tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw} un (${Math.round(c.raw / totalQty * 100)}%)` } },
+        datalabels: { color: '#000', font: { weight: 'bold', size: 10 }, formatter: v => { const p = Math.round(v / totalQty * 100); return p >= 6 ? p + '%' : '' } }
       }
     },
     plugins: [ChartDataLabels]
   })
 
   if (legendEl) {
-    legendEl.innerHTML = top.map((d, i) => `
+    legendEl.innerHTML = items.map((d, i) => `
       <div class="legend-item">
         <span class="legend-dot" style="background:${colors[i]}"></span>
         <span class="legend-name" style="font-size:11px">${d.name.length > 18 ? d.name.slice(0, 18) + '…' : d.name}</span>
-        <span class="legend-pct">${d.qty} un · ${Math.round(d.total / total * 100)}%</span>
+        <span class="legend-pct">${d.qty} un · ${Math.round(d.qty / totalQty * 100)}%</span>
       </div>`).join('')
   }
 }
 
-// Donut de participação por CATEGORIA (unidades + % sobre receita)
-let catDonutChart = null
-function buildCategoryDonut(data) {
-  const canvas = document.getElementById('catDonut')
-  const centerEl = document.getElementById('catDonutCenter')
-  const legendEl = document.getElementById('catDonutLegend')
-  if (!canvas) return
-  if (catDonutChart) { catDonutChart.destroy(); catDonutChart = null }
-
+// Participação por CATEGORIA em barras horizontais (lê melhor que rosca quando 1 categoria domina)
+function renderCategoryBars(data) {
+  const el = document.getElementById('catBars')
+  if (!el) return
   const byCat = {}
   ;(data || []).forEach(d => {
     if (!byCat[d.group]) byCat[d.group] = { qty: 0, total: 0 }
@@ -2333,44 +2347,22 @@ function buildCategoryDonut(data) {
   const arr = Object.entries(byCat)
     .map(([k, v]) => ({ key: k, label: CAT_LABELS[k] || k, ...v }))
     .sort((a, b) => b.total - a.total)
+  if (!arr.length) { el.innerHTML = '<div style="color:#666;font-size:12px;padding:8px 0">Sem dados</div>'; return }
 
-  if (!arr.length) {
-    if (centerEl) centerEl.innerHTML = '<span style="color:#666;font-size:12px">Sem dados</span>'
-    if (legendEl) legendEl.innerHTML = ''
-    return
-  }
-
-  const total    = arr.reduce((a, d) => a + d.total, 0) || 1
-  const totalQty = arr.reduce((a, d) => a + d.qty, 0)
-  const labels = arr.map(d => d.label)
-  const values = arr.map(d => d.total)
-  const colors = arr.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
-
-  if (centerEl) centerEl.innerHTML = `<div class="donut-center-val" style="font-size:13px">${totalQty}</div><div style="font-size:10px;color:#888">unidades</div>`
-
-  const ctx = canvas.getContext('2d')
-  catDonutChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: '#111', borderWidth: 2, hoverOffset: 4 }] },
-    options: {
-      cutout: '65%',
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: c => { const d = arr[c.dataIndex]; return ` ${d.label}: ${fmtBRL(d.total)} · ${d.qty} un (${Math.round(d.total / total * 100)}%)` } } },
-        datalabels: { color: '#000', font: { weight: 'bold', size: 10 }, formatter: v => { const p = Math.round(v / total * 100); return p >= 6 ? p + '%' : '' } }
-      }
-    },
-    plugins: [ChartDataLabels]
-  })
-
-  if (legendEl) {
-    legendEl.innerHTML = arr.map((d, i) => `
-      <div class="legend-item">
-        <span class="legend-dot" style="background:${colors[i]}"></span>
-        <span class="legend-name" style="font-size:11px">${d.label}</span>
-        <span class="legend-pct">${d.qty} un · ${Math.round(d.total / total * 100)}%</span>
-      </div>`).join('')
-  }
+  const total = arr.reduce((a, d) => a + d.total, 0) || 1
+  el.innerHTML = arr.map((d, i) => {
+    const pct = d.total / total * 100
+    const color = GROUP_COLORS[i % GROUP_COLORS.length]
+    return `<div style="margin-bottom:11px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px;margin-bottom:4px">
+        <span style="color:var(--white);font-weight:600">${d.label}</span>
+        <span style="color:var(--gray)"><strong style="color:var(--white)">${d.qty} un</strong> · ${fmtBRL(d.total)} · <strong style="color:${color}">${pct.toFixed(0)}%</strong></span>
+      </div>
+      <div style="height:9px;background:#222;border-radius:5px;overflow:hidden">
+        <div style="height:9px;width:${Math.max(pct, 1.5)}%;background:${color};border-radius:5px;transition:width .4s"></div>
+      </div>
+    </div>`
+  }).join('')
 }
 
 // ── CRM ──
