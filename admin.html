@@ -2158,27 +2158,46 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
 
   const gHeaders = ITEM_GROUPS.map(g => `<th style="text-align:right">${g.label}</th>`).join('')
 
+  // totais por categoria (unidades + R$) para os rótulos dos filtros
+  const catTotals = {}
+  detalheSummaryData.forEach(d => {
+    if (!catTotals[d.group]) catTotals[d.group] = { qty: 0, total: 0 }
+    catTotals[d.group].qty   += d.qty
+    catTotals[d.group].total += d.total
+  })
+
   el.innerHTML = `
     ${banner}
     <div class="detalhe-bottom">
       <div class="summary-card">
         <div class="summary-card-title">Subtotal por item</div>
         <div class="group-checks" id="groupChecks">
-          ${ITEM_GROUPS.map(g => `
-            <label class="group-check-label">
+          ${ITEM_GROUPS.map(g => {
+            const ct = catTotals[g.key] || { qty: 0 }
+            return `<label class="group-check-label">
               <input type="checkbox" value="${g.key}" checked>
-              <span>${g.label}</span>
-            </label>`).join('')}
+              <span style="display:flex;flex-direction:column;line-height:1.2">
+                <span>${g.label}</span>
+                <span style="color:#888;font-weight:400;font-size:10.5px">${ct.qty} un</span>
+              </span>
+            </label>`
+          }).join('')}
         </div>
         <div id="summaryTableWrap"></div>
       </div>
       <div class="summary-card">
-        <div class="summary-card-title">Participação</div>
+        <div class="summary-card-title">Participação por item</div>
         <div class="donut-wrap" style="width:180px;height:180px;margin:0 auto 12px">
           <canvas id="detalheDonut"></canvas>
           <div class="donut-center-text" id="detalheDonutCenter"></div>
         </div>
         <div class="donut-legend" id="detalheDonutLegend"></div>
+        <div class="summary-card-title" style="margin-top:22px">Participação por categoria</div>
+        <div class="donut-wrap" style="width:180px;height:180px;margin:0 auto 12px">
+          <canvas id="catDonut"></canvas>
+          <div class="donut-center-text" id="catDonutCenter"></div>
+        </div>
+        <div class="donut-legend" id="catDonutLegend"></div>
       </div>
     </div>
     <div class="detalhe-table-wrap" style="margin-top:20px">
@@ -2201,14 +2220,15 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
 function updateSummarySection() {
   const checked = Array.from(document.querySelectorAll('#groupChecks input:checked')).map(cb => cb.value)
   const filtered = detalheSummaryData.filter(d => checked.includes(d.group))
-  const total = filtered.reduce((a, d) => a + d.total, 0)
+  const total    = filtered.reduce((a, d) => a + d.total, 0)
+  const totalQty = filtered.reduce((a, d) => a + d.qty, 0)
 
   const wrap = document.getElementById('summaryTableWrap')
   if (!wrap) return
 
   if (!filtered.length) {
     wrap.innerHTML = '<div style="color:#666;font-size:13px;padding:12px 0">Nenhum grupo selecionado.</div>'
-    buildDetalheDonut([])
+    buildDetalheDonut([]); buildCategoryDonut([])
     return
   }
 
@@ -2226,13 +2246,15 @@ function updateSummarySection() {
         <td style="color:#666;text-align:right">Total</td>
       </tr></thead>
       <tbody>${rows}
-        <tr><td colspan="2"><strong>TOTAL</strong></td>
+        <tr><td><strong>TOTAL</strong></td>
+          <td style="text-align:center;font-weight:900;color:var(--white)">${totalQty}</td>
           <td style="text-align:right;color:#F0E870;font-weight:900">${fmtBRL(total)}</td>
         </tr>
       </tbody>
     </table>`
 
   buildDetalheDonut(filtered)
+  buildCategoryDonut(filtered)
 }
 
 function buildDetalheDonut(data) {
@@ -2249,7 +2271,16 @@ function buildDetalheDonut(data) {
   }
 
   const total  = data.reduce((a, d) => a + d.total, 0)
-  const top    = data.slice(0, 10)
+  // top 9 + "Outros" (resto agrupado) → o donut soma 100%
+  const N = 9
+  const items = data.slice(0, N).map(d => ({ name: d.name, total: d.total, qty: d.qty }))
+  const rest  = data.slice(N)
+  if (rest.length) items.push({
+    name: `Outros (${rest.length})`,
+    total: rest.reduce((a, d) => a + d.total, 0),
+    qty:   rest.reduce((a, d) => a + d.qty, 0)
+  })
+  const top    = items
   const labels = top.map(d => d.name.length > 22 ? d.name.slice(0, 22) + '…' : d.name)
   const values = top.map(d => d.total)
   const colors = top.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
@@ -2279,7 +2310,65 @@ function buildDetalheDonut(data) {
       <div class="legend-item">
         <span class="legend-dot" style="background:${colors[i]}"></span>
         <span class="legend-name" style="font-size:11px">${d.name.length > 18 ? d.name.slice(0, 18) + '…' : d.name}</span>
-        <span class="legend-pct">${Math.round(d.total / total * 100)}%</span>
+        <span class="legend-pct">${d.qty} un · ${Math.round(d.total / total * 100)}%</span>
+      </div>`).join('')
+  }
+}
+
+// Donut de participação por CATEGORIA (unidades + % sobre receita)
+let catDonutChart = null
+function buildCategoryDonut(data) {
+  const canvas = document.getElementById('catDonut')
+  const centerEl = document.getElementById('catDonutCenter')
+  const legendEl = document.getElementById('catDonutLegend')
+  if (!canvas) return
+  if (catDonutChart) { catDonutChart.destroy(); catDonutChart = null }
+
+  const byCat = {}
+  ;(data || []).forEach(d => {
+    if (!byCat[d.group]) byCat[d.group] = { qty: 0, total: 0 }
+    byCat[d.group].qty   += d.qty
+    byCat[d.group].total += d.total
+  })
+  const arr = Object.entries(byCat)
+    .map(([k, v]) => ({ key: k, label: CAT_LABELS[k] || k, ...v }))
+    .sort((a, b) => b.total - a.total)
+
+  if (!arr.length) {
+    if (centerEl) centerEl.innerHTML = '<span style="color:#666;font-size:12px">Sem dados</span>'
+    if (legendEl) legendEl.innerHTML = ''
+    return
+  }
+
+  const total    = arr.reduce((a, d) => a + d.total, 0) || 1
+  const totalQty = arr.reduce((a, d) => a + d.qty, 0)
+  const labels = arr.map(d => d.label)
+  const values = arr.map(d => d.total)
+  const colors = arr.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
+
+  if (centerEl) centerEl.innerHTML = `<div class="donut-center-val" style="font-size:13px">${totalQty}</div><div style="font-size:10px;color:#888">unidades</div>`
+
+  const ctx = canvas.getContext('2d')
+  catDonutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: '#111', borderWidth: 2, hoverOffset: 4 }] },
+    options: {
+      cutout: '65%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => { const d = arr[c.dataIndex]; return ` ${d.label}: ${fmtBRL(d.total)} · ${d.qty} un (${Math.round(d.total / total * 100)}%)` } } },
+        datalabels: { color: '#000', font: { weight: 'bold', size: 10 }, formatter: v => { const p = Math.round(v / total * 100); return p >= 6 ? p + '%' : '' } }
+      }
+    },
+    plugins: [ChartDataLabels]
+  })
+
+  if (legendEl) {
+    legendEl.innerHTML = arr.map((d, i) => `
+      <div class="legend-item">
+        <span class="legend-dot" style="background:${colors[i]}"></span>
+        <span class="legend-name" style="font-size:11px">${d.label}</span>
+        <span class="legend-pct">${d.qty} un · ${Math.round(d.total / total * 100)}%</span>
       </div>`).join('')
   }
 }
