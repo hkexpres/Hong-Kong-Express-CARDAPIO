@@ -2654,6 +2654,40 @@ async function saveCustosFixos() {
   finally { btn.disabled = false; btn.textContent = 'Salvar custos fixos' }
 }
 
+function isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Resumo financeiro de um conjunto de pedidos (para o período anterior / comparação)
+function _finSummary(orders, prodBySku, prodByName, fichaByProdId, insumoMap, custosFixos) {
+  let receita = 0, custo = 0, prR = 0, prC = 0, qtyPratos = 0
+  ;(orders || []).forEach(o => {
+    const fin = calcOrderFinance(o, prodBySku, prodByName, fichaByProdId, insumoMap)
+    receita += fin.receita; custo += fin.custo
+    fin.items.forEach(it => { if (it.cat === 'pratos') { prR += it.receita; prC += it.custo; qtyPratos += it.qty } })
+  })
+  const lucro = receita - custo, n = (orders || []).length
+  return {
+    receita, custo, lucro, nPedidos: n, qtyPratos, custosFixos,
+    lucroLiquido: lucro - custosFixos,
+    ticket: n ? receita / n : 0,
+    lucroPorPrato: qtyPratos ? (prR - prC) / qtyPratos : 0,
+    margem: receita ? lucro / receita * 100 : 0
+  }
+}
+
+// Badge de variação ▲▼ vs período anterior. inverse=true → subir é ruim (custos).
+function finDelta(cur, prev, inverse) {
+  if (prev == null || !isFinite(prev) || prev === 0) return ''
+  const d = (cur - prev) / Math.abs(prev) * 100
+  const flat = Math.abs(d) < 0.5
+  const up = d > 0
+  const good = inverse ? !up : up
+  const color = flat ? '#888' : (good ? 'var(--green2)' : '#F44336')
+  const arrow = flat ? '' : (up ? '▲' : '▼')
+  return ` <span style="color:${color};font-size:11px;font-weight:700" title="vs período anterior">${arrow}${Math.abs(d).toFixed(0)}%</span>`
+}
+
 async function loadFinancas() {
   const from = document.getElementById('finFrom').value
   const to   = document.getElementById('finTo').value
@@ -2663,13 +2697,20 @@ async function loadFinancas() {
 
   const fromDate = startOfDay(new Date(from + 'T00:00:00'))
   const toDate   = endOfDay(new Date(to + 'T00:00:00'))
+  // Período anterior: mesmo tamanho, imediatamente antes (para comparação ▲▼)
+  const prevToDate   = new Date(fromDate.getTime() - 1)
+  const prevFromDate = new Date(fromDate.getTime() - 1 - (toDate.getTime() - fromDate.getTime()))
 
   try {
-    const [ordSnap, prodSnap, insSnap, recSnap] = await Promise.all([
+    const [ordSnap, prevSnap, prodSnap, insSnap, recSnap] = await Promise.all([
       db.collection('orders')
         .where('createdAt', '>=', fromDate)
         .where('createdAt', '<=', toDate)
         .orderBy('createdAt', 'asc')
+        .get(),
+      db.collection('orders')
+        .where('createdAt', '>=', prevFromDate)
+        .where('createdAt', '<=', prevToDate)
         .get(),
       db.collection('products').get(),
       db.collection('insumos').get(),
@@ -2677,6 +2718,8 @@ async function loadFinancas() {
     ])
 
     const orders = ordSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(o => o.status === 'confirmed')
+    const prevOrders = prevSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       .filter(o => o.status === 'confirmed')
 
     const prodBySku  = {}
@@ -2695,7 +2738,12 @@ async function loadFinancas() {
     const fichaByProdId = {}
     recSnap.docs.forEach(d => { fichaByProdId[d.id] = d.data() })
 
-    renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
+    // Resumo do período anterior (mesmo tamanho) p/ comparação ▲▼
+    const prevFixos = custosFixosTotal * monthsInRange(
+      isoDate(prevFromDate), isoDate(prevToDate))
+    const prev = _finSummary(prevOrders, prodBySku, prodByName, fichaByProdId, insumoMap, prevFixos)
+
+    renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap, prev)
   } catch(e) {
     el.innerHTML = `<div class="empty-state">Erro: ${e.message}</div>`
   }
@@ -2738,7 +2786,7 @@ function calcOrderFinance(order, prodBySku, prodByName, fichaByProdId, insumoMap
   return { receita, custo, lucro: receita - custo, margem: receita > 0 ? (receita - custo) / receita * 100 : 0, items, perOrderCost }
 }
 
-function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap) {
+function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap, prev) {
   const el = document.getElementById('financasContent')
 
   if (!orders.length) {
@@ -2817,6 +2865,32 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   const pratosParaMeta  = (breakEvenFat != null && precoMedioPrato > 0)
     ? Math.ceil(breakEvenFat / precoMedioPrato) : null
   const periodoTxt = mesesPeriodo === 1 ? 'no mês' : `em ${mesesPeriodo} meses`
+
+  // ── Métricas derivadas p/ o novo layout ──
+  const margemNeta   = totReceita > 0 ? lucroLiquido / totReceita * 100 : 0
+  // "por dia" usa dias com venda (mais fiel a um delivery que não abre todo dia)
+  const diasComVenda = new Set(rows.map(r => {
+    const d = r.createdAt.toDate(); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+  })).size
+  const receitaPorDia = diasComVenda > 0 ? totReceita / diasComVenda : 0
+  // Projeção de fecho de mês (só quando se olha o mês corrente parcial)
+  const _now = new Date()
+  const _fromD = finFromEl && finFromEl.value ? new Date(finFromEl.value + 'T00:00:00') : null
+  const _toD   = finToEl   && finToEl.value   ? new Date(finToEl.value   + 'T00:00:00') : null
+  const isMesCorrente = _fromD && _toD &&
+    _fromD.getDate() === 1 && _fromD.getMonth() === _now.getMonth() && _fromD.getFullYear() === _now.getFullYear() &&
+    _toD.getMonth() === _now.getMonth() && _toD.getFullYear() === _now.getFullYear()
+  const diasNoMes = new Date(_now.getFullYear(), _now.getMonth() + 1, 0).getDate()
+  const diaCorte  = _toD ? _toD.getDate() : 0
+  const projMes = (isMesCorrente && diaCorte > 0 && diaCorte < diasNoMes) ? totReceita / diaCorte * diasNoMes : null
+  // Semáforo do CMV (% custo de produção sobre receita)
+  const cmvColor = pctProducao <= 35 ? 'var(--green2)' : pctProducao <= 45 ? 'var(--yellow)' : '#F44336'
+  // Produto estrela (maior lucro) e menor margem (foco de atenção)
+  const allProds = []
+  Object.values(prodData).forEach(catObj => Object.values(catObj).forEach(p => { if (!p.noMatch && p.qty > 0) allProds.push(p) }))
+  const estrela = allProds.slice().sort((a, b) => (b.receita - b.custo) - (a.receita - a.custo))[0] || null
+  const piorMarg = allProds.filter(p => p.receita > 0).slice()
+    .sort((a, b) => (a.receita - a.custo) / a.receita - (b.receita - b.custo) / b.receita)[0] || null
 
   // Frase "como ler" — em faturamento + conversor por prato, conforme o estado real
   let equilibrioMsg = ''
@@ -2909,84 +2983,58 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
   </tr>`
 
   el.innerHTML = `
-    <div class="fin-section-title" style="margin-top:0">Indicadores Gerais do Negócio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· todas as categorias</span></div>
+    <div class="fin-section-title" style="margin-top:0">Resultado do período <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· ▲▼ vs período anterior</span></div>
     <div class="fin-kpi-row">
       <div class="fin-kpi">
         <div class="fin-kpi-label">Receita total</div>
-        <div class="fin-kpi-val yellow">${fmtBRL(totReceita)}</div>
-        <div class="fin-kpi-sub">${rows.length} pedidos confirmados</div>
+        <div class="fin-kpi-val yellow">${fmtBRL(totReceita)}${finDelta(totReceita, prev && prev.receita)}</div>
+        <div class="fin-kpi-sub">${nPedidos} pedidos${projMes != null ? ` · projeção mês ${fmtBRL(projMes)}` : ''}</div>
       </div>
-      <div class="fin-kpi" title="Custo variável do que foi vendido: ingredientes (via ficha técnica) + embalagem. NÃO inclui custos fixos (aluguel, salários, etc.).">
-        <div class="fin-kpi-label">Custo de produção</div>
-        <div class="fin-kpi-val" style="color:#aaa">${fmtBRL(totCusto)}</div>
-        <div class="fin-kpi-sub">ingredientes + embalagem · ${totReceita>0?(totCusto/totReceita*100).toFixed(1):0}% da receita</div>
+      <div class="fin-kpi" title="Custo de produção (ingredientes + embalagem) + custos fixos do período.">
+        <div class="fin-kpi-label">Custo total</div>
+        <div class="fin-kpi-val" style="color:#ccc">${fmtBRL(custoTotalPeriodo)}</div>
+        <div class="fin-kpi-sub"><span style="color:${cmvColor};font-weight:600">CMV ${pctProducao.toFixed(0)}%</span> + fixos ${pctFixos.toFixed(0)}% = ${pctCustoTotal.toFixed(0)}% da receita</div>
       </div>
-      <div class="fin-kpi" title="Receita − custo de produção. É o que sobra ANTES de pagar os custos fixos (aluguel, salários, marketing).">
+      <div class="fin-kpi" title="Receita − custo de produção. É o que sobra ANTES dos custos fixos.">
         <div class="fin-kpi-label">Lucro bruto</div>
-        <div class="fin-kpi-val ${totLucro>=0?'green':'red'}">${fmtBRL(totLucro)}</div>
-        <div class="fin-kpi-sub">antes de custos fixos</div>
+        <div class="fin-kpi-val ${totLucro>=0?'green':'red'}">${fmtBRL(totLucro)}${finDelta(totLucro, prev && prev.lucro)}</div>
+        <div class="fin-kpi-sub">margem bruta ${totMargem.toFixed(1)}% · antes de fixos</div>
       </div>
-      <div class="fin-kpi">
-        <div class="fin-kpi-label">Margem bruta</div>
-        <div class="fin-kpi-val ${totMargem>=40?'green':totMargem>=20?'yellow':'red'}">${totMargem.toFixed(1)}%</div>
-        <div class="fin-kpi-sub">sobre receita</div>
+      <div class="fin-kpi" style="border-color:${lucroLiquido>=0?'rgba(129,199,132,.45)':'rgba(244,67,54,.45)'}" title="O que sobra depois de TODOS os custos (produção + fixos). É o número que diz se você ganhou no período.">
+        <div class="fin-kpi-label">Resultado líquido</div>
+        <div class="fin-kpi-val ${lucroLiquido>=0?'green':'red'}">${fmtBRL(lucroLiquido)}${finDelta(lucroLiquido, prev && prev.lucroLiquido)}</div>
+        <div class="fin-kpi-sub">margem líquida ${margemNeta.toFixed(1)}% · depois de fixos</div>
       </div>
     </div>
 
-    <div class="fin-section-title" style="margin-top:8px">Indicadores-chave do Prato <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· núcleo do negócio</span></div>
+    <div class="fin-section-title" style="margin-top:8px">Drivers do negócio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· o que explica o resultado</span></div>
     <div class="fin-kpi-row fin-kpi-row-prato">
       <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
         <div class="fin-kpi-label">Pratos vendidos</div>
-        <div class="fin-kpi-val yellow">${qtyPratos}</div>
+        <div class="fin-kpi-val yellow">${qtyPratos}${finDelta(qtyPratos, prev && prev.qtyPratos)}</div>
         <div class="fin-kpi-sub">${pratosPorPedido.toFixed(2)} pratos/pedido</div>
       </div>
       <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
-        <div class="fin-kpi-label">Lucro médio por prato</div>
-        <div class="fin-kpi-val ${lucroPorPrato>=0?'green':'red'}">${fmtBRL(lucroPorPrato)}</div>
-        <div class="fin-kpi-sub">lucro de pratos ÷ nº de pratos</div>
-      </div>
-      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
-        <div class="fin-kpi-label">Margem média por prato</div>
-        <div class="fin-kpi-val ${margemPrato>=40?'green':margemPrato>=20?'yellow':'red'}">${margemPrato.toFixed(1)}%</div>
-        <div class="fin-kpi-sub">ponderada sobre receita de pratos</div>
-      </div>
-      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
         <div class="fin-kpi-label">Ticket médio</div>
-        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(ticketMedio)}</div>
+        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(ticketMedio)}${finDelta(ticketMedio, prev && prev.ticket)}</div>
         <div class="fin-kpi-sub">${fmtBRL(lucroPorPedido)} de lucro/pedido</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)" title="Lucro só de pratos ÷ nº de pratos vendidos. Margem do prato ponderada sobre a receita de pratos.">
+        <div class="fin-kpi-label">Lucro médio por prato</div>
+        <div class="fin-kpi-val ${lucroPorPrato>=0?'green':'red'}">${fmtBRL(lucroPorPrato)}${finDelta(lucroPorPrato, prev && prev.lucroPorPrato)}</div>
+        <div class="fin-kpi-sub">margem do prato ${margemPrato.toFixed(1)}%</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)" title="Receita ÷ dias com venda no período (delivery pode não abrir todo dia).">
+        <div class="fin-kpi-label">Receita por dia</div>
+        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(receitaPorDia)}</div>
+        <div class="fin-kpi-sub">${diasComVenda} dia${diasComVenda !== 1 ? 's' : ''} com venda</div>
       </div>
     </div>
     ${custosFixosTotal > 0 ? `
     <div class="fin-section-title" style="margin-top:8px">Ponto de Equilíbrio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· quanto preciso faturar p/ cobrir os custos fixos</span></div>
-    ${equilibrioMsg ? `<div style="background:rgba(255,255,255,.03);border-left:3px solid ${faltamFat <= 0 ? 'var(--green2)' : 'var(--yellow)'};padding:9px 13px;border-radius:6px;font-size:12.5px;line-height:1.55;color:var(--gray);margin-bottom:14px">
+    ${equilibrioMsg ? `<div style="background:rgba(255,255,255,.03);border-left:3px solid ${faltamFat <= 0 ? 'var(--green2)' : 'var(--yellow)'};padding:9px 13px;border-radius:6px;font-size:12.5px;line-height:1.55;color:var(--gray);margin-bottom:12px">
       <strong style="color:var(--white)">Como ler:</strong> ${equilibrioMsg}
     </div>` : ''}
-    <div class="fin-kpi-row">
-      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Custos fixos do período = custo fixo mensal × nº de meses do filtro. Filtrar 2 meses dobra o valor.">
-        <div class="fin-kpi-label">Custos fixos no período</div>
-        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(custosFixosPeriodo)}</div>
-        <div class="fin-kpi-sub">${fmtBRL(custosFixosTotal)}/mês × ${mesesPeriodo} · ${pctFixos.toFixed(1)}% da receita</div>
-      </div>
-      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Quanto você precisa faturar no período (todo o negócio) para cobrir os custos fixos. = custos fixos do período ÷ margem de contribución (lucro bruto ÷ receita).">
-        <div class="fin-kpi-label">Meta de faturamento</div>
-        <div class="fin-kpi-val yellow">${breakEvenFat != null ? fmtBRL(breakEvenFat) : '—'}</div>
-        <div class="fin-kpi-sub">${periodoTxt} · ${pratosParaMeta != null ? '≈ ' + pratosParaMeta + ' pratos' : 'margem ≤ 0'}</div>
-      </div>
-      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="Faturamento médio que cada prato vendido gera. Use como conversor: meta de faturamento ÷ este valor ≈ pratos necessários.">
-        <div class="fin-kpi-label">Faturamento médio por prato</div>
-        <div class="fin-kpi-val" style="color:var(--white)">${precoMedioPrato > 0 ? fmtBRL(precoMedioPrato) : '—'}</div>
-        <div class="fin-kpi-sub">seu conversor p/ estimar pratos</div>
-      </div>
-      <div class="fin-kpi" style="border-color:rgba(255,112,112,0.25)" title="O que sobra no período depois de pagar TODOS os custos (produção + fixos). = receita − custo total. Verde = no azul; vermelho = no vermelho.">
-        <div class="fin-kpi-label">Resultado do período</div>
-        <div class="fin-kpi-val ${lucroLiquido >= 0 ? 'green' : 'red'}">${fmtBRL(lucroLiquido)}</div>
-        <div class="fin-kpi-sub">receita − custo total · ${totReceita > 0 ? (lucroLiquido / totReceita * 100).toFixed(1) : 0}%</div>
-      </div>
-    </div>
-    <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 13px;font-size:12.5px;color:var(--gray);margin-bottom:14px;display:flex;flex-wrap:wrap;gap:6px 22px">
-      <span><strong style="color:var(--white)">Custo total no período:</strong> ${fmtBRL(custoTotalPeriodo)} = <strong style="color:${pctCustoTotal <= 100 ? 'var(--white)' : '#F44336'}">${pctCustoTotal.toFixed(1)}%</strong> da receita</span>
-      <span style="color:var(--gray2)">produção ${fmtBRL(totCusto)} (${pctProducao.toFixed(1)}%) + fixos ${fmtBRL(custosFixosPeriodo)} (${pctFixos.toFixed(1)}%)</span>
-    </div>
     ${breakEvenFat != null ? `
     <div style="margin:-2px 0 22px">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray);margin-bottom:6px">
@@ -2996,6 +3044,14 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
       <div class="margin-bar-bg" style="height:9px"><div class="margin-bar-fill" style="width:${progressoFat}%;height:9px;background:${progressoFat >= 100 ? 'var(--green2)' : 'var(--yellow)'}"></div></div>
     </div>` : ''}
     ` : ''}
+
+    ${(estrela || piorMarg) ? `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      ${estrela ? `<div style="flex:1;min-width:220px;background:rgba(129,199,132,.06);border:1px solid rgba(129,199,132,.25);border-radius:10px;padding:10px 14px;font-size:12.5px">
+        ⭐ <strong style="color:var(--white)">Mais rentável:</strong> ${estrela.name} <span style="color:var(--gray)">· ${fmtBRL(estrela.receita - estrela.custo)} de lucro · ${estrela.qty} un</span></div>` : ''}
+      ${piorMarg ? `<div style="flex:1;min-width:220px;background:rgba(244,67,54,.05);border:1px solid rgba(244,67,54,.2);border-radius:10px;padding:10px 14px;font-size:12.5px">
+        ⚠ <strong style="color:var(--white)">Menor margem:</strong> ${piorMarg.name} <span style="color:var(--gray)">· ${(piorMarg.receita > 0 ? (piorMarg.receita - piorMarg.custo) / piorMarg.receita * 100 : 0).toFixed(0)}% de margem · ${piorMarg.qty} un</span></div>` : ''}
+    </div>` : ''}
 
     <div class="fin-section-title">Rentabilidade por Categoria</div>
     <div style="overflow-x:auto"><table class="fin-cat-table">
@@ -3018,17 +3074,19 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap)
       <div class="fin-chart-wrap"><canvas id="finChart"></canvas></div>
     </div>
 
-    <div class="fin-section-title">Detalhe por Pedido</div>
-    <div style="overflow-x:auto"><table class="fin-orders-table">
-      <thead><tr>
-        <th>Data</th><th>Hora</th>
-        <th style="text-align:right">Receita</th>
-        <th style="text-align:right">Custo</th>
-        <th style="text-align:right">Lucro</th>
-        <th style="text-align:right">Margem</th>
-      </tr></thead>
-      <tbody>${orderRows}</tbody>
-    </table></div>
+    <details style="margin-top:8px">
+      <summary style="cursor:pointer;list-style:revert"><span class="fin-section-title" style="display:inline">Detalhe por Pedido</span> <span style="color:var(--gray2);font-size:12px">· clique para abrir (${rows.length} pedidos)</span></summary>
+      <div style="overflow-x:auto;margin-top:10px"><table class="fin-orders-table">
+        <thead><tr>
+          <th>Data</th><th>Hora</th>
+          <th style="text-align:right">Receita</th>
+          <th style="text-align:right">Custo</th>
+          <th style="text-align:right">Lucro</th>
+          <th style="text-align:right">Margem</th>
+        </tr></thead>
+        <tbody>${orderRows}</tbody>
+      </table></div>
+    </details>
   `
 
   if (finChart) { finChart.destroy(); finChart = null }
