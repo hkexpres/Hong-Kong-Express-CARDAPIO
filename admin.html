@@ -1867,9 +1867,9 @@ function editPopulateCats() {
 function editPopulateProducts() {
   const cat = document.getElementById('editCatSel').value
   const sel = document.getElementById('editProdSel')
-  // Só produtos do catálogo (com SKU) — preço autoritativo. Evita nomes/preços
+  // Só produtos do catálogo — preço autoritativo. Evita nomes/preços
   // stale vindos do histórico de pedidos.
-  const items = (cachedUniqueItems || []).filter(it => it.cat === cat && it.sku)
+  const items = (cachedUniqueItems || []).filter(it => it.cat === cat && it.catalogo)
   sel.innerHTML = items.length
     ? items.map(it => `<option value="${it.name.replace(/"/g, '&quot;')}">${it.name}${it.price ? (' — ' + fmtBRL(it.price)) : ''}</option>`).join('')
     : '<option value="">— sem itens —</option>'
@@ -1887,7 +1887,7 @@ function editAddFromCatalog() {
   if (!name) return
   const qty = Math.max(1, parseInt(document.getElementById('editQty').value) || 1)
   // pega o item do catálogo (com SKU) → preço correto, não o do histórico
-  const prod = (cachedUniqueItems || []).find(it => it.name === name && it.sku)
+  const prod = (cachedUniqueItems || []).find(it => it.name === name && it.catalogo)
             || (cachedUniqueItems || []).find(it => it.name === name) || {}
   editMergeLine(name, prod.price != null ? prod.price : 0, qty, prod.sku)
   document.getElementById('editQty').value = '1'
@@ -4311,7 +4311,7 @@ async function fetchUniqueItems() {
     prodSnap.docs.forEach(d => {
       const p = d.data()
       if (p.active !== false) {
-        map[p.name] = { name: p.name, sku: p.sku || null, cat: normalizeCat(p.category) || classifyItem(p.name), price: p.price || null, cost: p.cost || null }
+        map[p.name] = { name: p.name, sku: p.sku || null, cat: normalizeCat(p.category) || classifyItem(p.name), price: p.price || null, cost: p.cost || null, catalogo: true }
       }
     })
   }
@@ -4417,7 +4417,9 @@ async function initManual() {
 
 function populateManualProducts(cat) {
   const prodSel = document.getElementById('manualProd')
-  const items = (cachedUniqueItems || []).filter(it => it.cat === cat)
+  // Só produtos do catálogo (preço autoritativo, único). Nomes/preços antigos do
+  // histórico ficam fora — para itens fora do catálogo, use "Item avulso".
+  const items = (cachedUniqueItems || []).filter(it => it.cat === cat && it.catalogo)
   if (!items.length) { prodSel.innerHTML = '<option value="">— sem itens —</option>'; return }
   prodSel.innerHTML = items.map(it =>
     `<option value="${it.name.replace(/"/g, '&quot;')}">${it.name}${it.price ? (' — ' + fmtBRL(it.price)) : ''}</option>`
