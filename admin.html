@@ -1371,6 +1371,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active')
     document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none')
     document.getElementById('tab-' + tab).style.display = 'block'
+    if (tab === 'dashboard') loadDashboard()   // sempre recarrega ao abrir (dados frescos)
     if (tab === 'crm') loadCRM()
     if (tab === 'artigos') initArtigos()
     if (tab === 'insumos') initInsumos()
