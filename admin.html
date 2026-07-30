@@ -1006,10 +1006,6 @@ input[type="number"]{-moz-appearance:textfield}
         </label>
       </div>
       <div id="fichaMissingBanner" style="margin-top:12px"></div>
-      <div style="margin-top:14px;padding-top:12px;border-top:1px solid #2a2a2a;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <button class="art-btn" id="fichaAjusteBtn" style="background:rgba(125,179,255,.12);border:1px solid #7DB3FF;color:#cfe3ff" onclick="aplicarAjustePorcoes()">⚙ Aplicar ajuste de porções</button>
-        <span style="font-size:12px;color:var(--gray2)">Chow Fan → arroz 250g · Chow Mein & Agripicante → macarrão 250g · Kung Pao & Carne Teriyaki → arroz 200g. Roda uma vez (idempotente).</span>
-      </div>
     </div>
 
     <div class="fin-config-card" id="fichaEditorCard" style="display:none">
@@ -4075,49 +4071,6 @@ async function loadFichasData() {
   recomputeMolhoCosts(_imap)
   fichaMap = {}
   fichaSnap.docs.forEach(d => { fichaMap[d.id] = d.data() })
-}
-
-// Ajuste em lote das porções de carboidrato por família (uma vez, idempotente)
-async function aplicarAjustePorcoes() {
-  const AJUSTES = {
-    CF:  { ref: 'ING-ARROZ', qty: 250 },  // Chow/Chao Fan
-    CM:  { ref: 'ING-FIDEO', qty: 250 },  // Chow/Chao Mein
-    AGP: { ref: 'ING-FIDEO', qty: 250 },  // Agripicante
-    KP:  { ref: 'ING-ARROZ', qty: 200 },  // Kung Pao
-    TRY: { ref: 'ING-ARROZ', qty: 200 },  // Carne Teriyaki
-  }
-  if (!confirm('Aplicar ajuste de porções nas fichas?\n\n• Chow Fan → 250 g de arroz\n• Chow Mein → 250 g de macarrão\n• Agripicante → 250 g de macarrão\n• Kung Pao → 200 g de arroz\n• Carne Teriyaki → 200 g de arroz')) return
-  const btn = document.getElementById('fichaAjusteBtn')
-  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…' }
-  try {
-    const [prodSnap, recSnap] = await Promise.all([
-      db.collection('products').get(),
-      db.collection('recipes').get(),
-    ])
-    const recById = {}
-    recSnap.docs.forEach(d => { recById[d.id] = d.data() })
-    const batch = db.batch()
-    let n = 0, semFicha = 0
-    prodSnap.docs.forEach(d => {
-      const p = d.data()
-      const fam = String(p.sku || d.id).split('-')[0]
-      const adj = AJUSTES[fam]
-      if (!adj) return
-      const rec = recById[d.id]
-      if (!rec || !Array.isArray(rec.lines)) { semFicha++; return }
-      const lines = rec.lines.map(l => ({ ...l }))
-      const line = lines.find(l => l.insumoId === adj.ref)
-      if (line) { if (line.qty === adj.qty) return; line.qty = adj.qty }
-      else lines.push({ insumoId: adj.ref, qty: adj.qty })
-      batch.update(db.collection('recipes').doc(d.id), { lines })
-      n++
-    })
-    if (n === 0) { alert('Nada para ajustar' + (semFicha ? ` (${semFicha} produto(s) sem ficha)` : ' — já estão nos valores.')); return }
-    await batch.commit()
-    alert(`✓ ${n} ficha(s) ajustada(s).` + (semFicha ? `\n${semFicha} produto(s) sem ficha (ignorados).` : ''))
-    if (typeof initFichas === 'function') initFichas()
-  } catch (e) { alert('Erro: ' + e.message) }
-  finally { if (btn) { btn.disabled = false; btn.textContent = '⚙ Aplicar ajuste de porções' } }
 }
 
 function insumoById(id) { return fichaInsumos.find(i => i.id === id) }
