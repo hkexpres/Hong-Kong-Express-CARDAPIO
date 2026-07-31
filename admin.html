@@ -737,7 +737,7 @@ input[type="number"]{-moz-appearance:textfield}
   <div class="tab-content" id="tab-dashboard">
     <div class="donuts-row">
       <div class="donut-card">
-        <div class="donut-card-title">Semana Atual</div>
+        <div class="donut-card-title">Semana Atual <span id="deltaSemana" style="margin-left:6px"></span></div>
         <div class="donut-card-dates" id="datesSemana"></div>
         <div class="donut-wrap">
           <canvas id="donutSemana"></canvas>
@@ -755,7 +755,7 @@ input[type="number"]{-moz-appearance:textfield}
         <div class="donut-legend" id="legendSemanaAnterior"></div>
       </div>
       <div class="donut-card">
-        <div class="donut-card-title">Mês Atual</div>
+        <div class="donut-card-title">Mês Atual <span id="deltaMes" style="margin-left:6px"></span></div>
         <div class="donut-card-dates" id="datesMes"></div>
         <div class="donut-wrap">
           <canvas id="donutMes"></canvas>
@@ -1488,6 +1488,12 @@ async function loadDashboard() {
     buildDonut('donutSemanaAnterior','centerSemanaAnterior','legendSemanaAnterior', prevSemanaOrders)
     buildDonut('donutMes',           'centerMes',           'legendMes',           mesOrders)
     buildDonut('donutMesAnterior',   'centerMesAnterior',   'legendMesAnterior',   prevMesOrders)
+
+    // Comparativo de faturamento: atual vs anterior (semáforo ▲▼)
+    const sumBRL = list => list.reduce((a, o) => a + (o.total || 0), 0)
+    setDashDelta('deltaSemana', sumBRL(semanaOrders), sumBRL(prevSemanaOrders))
+    setDashDelta('deltaMes',    sumBRL(mesOrders),    sumBRL(prevMesOrders))
+
     allDashboardOrders = orders
     buildLineChart(orders, 12)
   } catch(e) {
@@ -1527,6 +1533,21 @@ function calcGroups(orders) {
     totalPlatos += countPorcoes(o.items)
   })
   return { groups, totalPlatos, totalPratos, totalBRL }
+}
+
+// Badge comparativo do faturamento (atual vs anterior) no card do donut.
+// Verde: igual/acima · Amarelo: queda até 10% · Vermelho: queda > 10%.
+function setDashDelta(elId, cur, prev) {
+  const el = document.getElementById(elId)
+  if (!el) return
+  if (!prev || prev <= 0) { el.textContent = ''; return }   // sem base p/ comparar
+  const d = (cur - prev) / prev * 100
+  let color, arrow
+  if (d >= 0)        { color = 'var(--green2)'; arrow = '▲' }
+  else if (d >= -10) { color = 'var(--yellow)'; arrow = '▼' }
+  else               { color = '#F44336';       arrow = '▼' }
+  const sign = d > 0 ? '+' : ''
+  el.innerHTML = `<span style="color:${color};font-size:12px;font-weight:700" title="vs período anterior (${fmtBRL(prev)})">${arrow} ${sign}${d.toFixed(0)}%</span>`
 }
 
 function buildDonut(canvasId, centerId, legendId, orders) {
