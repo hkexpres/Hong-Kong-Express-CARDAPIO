@@ -1275,7 +1275,7 @@ const GROUP_COLORS = [
 ]
 
 // ── CHART INSTANCES ──
-let chartSemana = null, chartSemanaAnterior = null, chartMes = null, chartMesAnterior = null, chartLine = null, detalheDonutChart = null
+let dashCharts = {}, chartLine = null, detalheDonutChart = null   // dashCharts: instância por canvasId
 
 function fmtShort(d) {
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`
@@ -1560,11 +1560,8 @@ function buildDonut(canvasId, centerId, legendId, orders) {
     legendEl.innerHTML = ''
     // draw empty grey ring
     const ctx = document.getElementById(canvasId).getContext('2d')
-    if (chartSemana        && canvasId === 'donutSemana')        { chartSemana.destroy();        chartSemana = null }
-    if (chartSemanaAnterior&& canvasId === 'donutSemanaAnterior'){ chartSemanaAnterior.destroy(); chartSemanaAnterior = null }
-    if (chartMes           && canvasId === 'donutMes')           { chartMes.destroy();           chartMes = null }
-    if (chartMesAnterior   && canvasId === 'donutMesAnterior')   { chartMesAnterior.destroy();   chartMesAnterior = null }
-    new Chart(ctx, {
+    if (dashCharts[canvasId]) { dashCharts[canvasId].destroy(); dashCharts[canvasId] = null }
+    dashCharts[canvasId] = new Chart(ctx, {
       type: 'doughnut',
       data: { datasets: [{ data: [1], backgroundColor: ['#222'], borderWidth: 0 }] },
       options: { cutout: '72%', plugins: { legend: { display: false }, tooltip: { enabled: false } } }
@@ -1594,9 +1591,7 @@ function buildDonut(canvasId, centerId, legendId, orders) {
   `).join('')
 
   const ctx = document.getElementById(canvasId).getContext('2d')
-  // destroy previous if exists
-  const chartVar = canvasId === 'donutSemana' ? chartSemana : canvasId === 'donutMes' ? chartMes : chartMesAnterior
-  if (chartVar) chartVar.destroy()
+  if (dashCharts[canvasId]) { dashCharts[canvasId].destroy(); dashCharts[canvasId] = null }
 
   const newChart = new Chart(ctx, {
     type: 'doughnut',
@@ -1635,10 +1630,7 @@ function buildDonut(canvasId, centerId, legendId, orders) {
     },
     plugins: [ChartDataLabels]
   })
-  if      (canvasId === 'donutSemana')         chartSemana = newChart
-  else if (canvasId === 'donutSemanaAnterior') chartSemanaAnterior = newChart
-  else if (canvasId === 'donutMes')            chartMes = newChart
-  else                                          chartMesAnterior = newChart
+  dashCharts[canvasId] = newChart
 }
 
 function buildLineChart(orders, nMonths = 12) {
