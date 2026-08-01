@@ -1505,9 +1505,10 @@ async function syncPricesFromFirestore() {
     snap.docs.forEach(d => {
       const p = d.data()
       if (!p.name || p.price == null) return
-      if (p.active === false) { if (p.sku) inactive.add(p.sku); return }
+      const sku = p.sku || d.id   // doc id = SKU quando o produto não tem campo sku
+      if (p.active === false) { if (sku) inactive.add(sku); return }
       byName[p.name] = p.price
-      if (p.sku) bySku[p.sku] = p.price
+      if (sku) bySku[sku] = p.price
     })
     const fmt = v => v % 1 === 0 ? 'R$ ' + v : 'R$ ' + v.toFixed(2).replace('.', ',')
     const fmt2 = v => 'R$ ' + v.toFixed(2).replace('.', ',')
