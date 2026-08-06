@@ -3245,13 +3245,26 @@ function renderArtTable() {
   })
 }
 
-function toggleArtigoActive(id) {
+async function toggleArtigoActive(id) {
   const current = artigosBuffer[id] || { ...(artigosSnapshot[id] || {}) }
   const nowActive = current.active === false ? true : false
+  // atualização otimista da UI
   artigosBuffer[id] = { ...current, active: nowActive }
   renderArtTable()
-  // invalidate so Carga Manual / Finanças reload
-  cachedUniqueItems = null
+  cachedUniqueItems = null   // invalida p/ Carga Manual / Finanças recarregarem
+  // Novos produtos ainda não existem no Firestore — serão criados em "Salvar alterações"
+  if (id.startsWith('__new__')) return
+  // Salva o status na hora (sem precisar de "Salvar alterações")
+  try {
+    await db.collection('products').doc(id).update({ active: nowActive })
+    if (artigosSnapshot[id]) artigosSnapshot[id].active = nowActive
+    const msg = document.getElementById('artSavedMsg')
+    if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2000) }
+  } catch (e) {
+    artigosBuffer[id] = { ...current }   // reverte em caso de erro
+    renderArtTable()
+    alert('Erro ao atualizar status: ' + e.message)
+  }
 }
 
 async function deleteArtigo(id) {
