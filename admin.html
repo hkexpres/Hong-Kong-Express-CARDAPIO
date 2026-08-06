@@ -1000,6 +1000,7 @@ input[type="number"]{-moz-appearance:textfield}
       <div class="fin-config-sub">Defina quanto de cada insumo leva cada prato (g / ml / unidade). Selecione um prato ou acompanhamento no menu abaixo para criar ou editar sua ficha. Os combos calculam-se automaticamente a partir das fichas dos pratos que os compõem.</div>
       <div class="manual-row">
         <label>Prato / Acompanhamento
+          <input type="search" id="fichaProdSearch" class="art-inp" style="width:100%;margin-bottom:6px" placeholder="🔎 Buscar ficha… (nome ou SKU)" autocomplete="off">
           <select id="fichaProdSelect" class="art-inp" style="width:100%">
             <option value="">Carregando…</option>
           </select>
@@ -4176,11 +4177,23 @@ async function refreshFichaBadge() {
 
 function renderFichaProdSelect() {
   const sel = document.getElementById('fichaProdSelect')
-  sel.innerHTML = '<option value="">— Selecione um prato —</option>' +
-    fichaProducts.map(p => {
+  const q = (document.getElementById('fichaProdSearch')?.value || '').trim().toLowerCase()
+  const list = q
+    ? fichaProducts.filter(p => `${p.name || ''} ${p.sku || ''}`.toLowerCase().includes(q))
+    : fichaProducts
+  const placeholder = list.length
+    ? '<option value="">— Selecione um prato —</option>'
+    : '<option value="">— Nenhuma ficha encontrada —</option>'
+  sel.innerHTML = placeholder +
+    list.map(p => {
       const has = fichaMap[p.id] && (fichaMap[p.id].lines || []).length
       return `<option value="${p.id}">${has ? '✓ ' : '○ '}${(p.name || '').replace(/"/g, '&quot;')}</option>`
     }).join('')
+  // Se a busca deixa exatamente 1 resultado, seleciona-o automaticamente
+  if (q && list.length === 1) {
+    sel.value = list[0].id
+    onFichaProdChange()
+  }
 }
 
 function renderFichaInsSelect() {
@@ -4370,6 +4383,8 @@ async function initFichas() {
     renderFichaMissingBanner()
     document.getElementById('fichaEditorCard').style.display = 'none'
     sel.onchange = onFichaProdChange
+    const search = document.getElementById('fichaProdSearch')
+    if (search) { search.value = ''; search.oninput = renderFichaProdSelect }
     document.getElementById('fichaInsSelect').onchange = updateFichaUnitHint
   } catch (e) {
     console.error('Fichas load error:', e)
