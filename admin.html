@@ -3722,11 +3722,22 @@ function deriveCost(unit, bulkCost) {
   return { bulkUnit, bulkCost: bc, costPerUnit: cpu }
 }
 
-function toggleInsumoActive(id) {
+async function toggleInsumoActive(id) {
   const cur       = insumosBuffer[id] || { ...(insumosSnapshot[id] || {}) }
   const nowActive = cur.active === false
   insumosBuffer[id] = { ...cur, active: nowActive }
   renderInsTable()
+  if (id.startsWith('__new__')) return   // novo insumo: criado no "Salvar alterações"
+  try {
+    await db.collection('insumos').doc(id).update({ active: nowActive })
+    if (insumosSnapshot[id]) insumosSnapshot[id].active = nowActive
+    const msg = document.getElementById('insSavedMsg')
+    if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2000) }
+  } catch (e) {
+    insumosBuffer[id] = { ...cur }   // reverte em caso de erro
+    renderInsTable()
+    alert('Erro ao atualizar status: ' + e.message)
+  }
 }
 
 async function deleteInsumo(id) {
