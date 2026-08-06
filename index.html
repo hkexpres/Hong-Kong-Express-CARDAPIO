@@ -1136,7 +1136,7 @@ body.has-cart{padding-bottom:78px}
       <span class="salsa-precio">R$ --</span>
     </div>
     <div class="salsa-chip" data-sku="MO-GYZ">
-      <span class="salsa-icon">🥟</span>
+      <span class="salsa-icon">🍶</span>
       <span class="salsa-nombre">Gyoza</span>
       <span class="salsa-ml">30ml</span>
       <span class="salsa-precio">R$ --</span>
@@ -1501,11 +1501,12 @@ async function syncPricesFromFirestore() {
   // e esta função preenche os valores reais ao carregar. Sem fallback no HTML,
   // então tentamos 1 vez e, se falhar, repetimos uma vez após 1,5s.
     const snap = await db.collection('products').get()
-    const byName = {}, bySku = {}, inactive = new Set()
+    const byName = {}, bySku = {}, nameBySku = {}, inactive = new Set()
     snap.docs.forEach(d => {
       const p = d.data()
       if (!p.name || p.price == null) return
       const sku = p.sku || d.id   // doc id = SKU quando o produto não tem campo sku
+      if (sku) nameBySku[sku] = p.name
       if (p.active === false) { if (sku) inactive.add(sku); return }
       byName[p.name] = p.price
       if (sku) bySku[sku] = p.price
@@ -1564,6 +1565,12 @@ async function syncPricesFromFirestore() {
       if (!nameEl) return
       const sku = s.dataset.sku
       if (sku && inactive.has(sku)) { markInactive(s, '.salsa-precio'); return }
+      // sincroniza o nome a partir do produto (tira "Molho" e "30ml") — renomeável pelo admin
+      const prodName = sku ? nameBySku[sku] : null
+      if (prodName) {
+        const short = prodName.replace(/^molho\s+/i, '').replace(/\s*\(?\d+\s?ml\)?\s*$/i, '').trim()
+        if (short) nameEl.textContent = short
+      }
       const ml = mlEl ? ' ' + mlEl.textContent.trim() : ''
       const fullName = 'Molho ' + nameEl.textContent.trim() + ml
       apply(s.querySelector('.salsa-precio'), resolve(sku, fullName), fmt2)
