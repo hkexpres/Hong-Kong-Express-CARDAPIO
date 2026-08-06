@@ -2826,6 +2826,10 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap,
   const totCusto   = rows.reduce((a, r) => a + r.fin.custo, 0)
   const totLucro   = totReceita - totCusto
   const totMargem  = totReceita > 0 ? totLucro / totReceita * 100 : 0
+  // Embalagem por pedido (saco de papel): custo 1×/pedido que não pertence a nenhuma categoria
+  const totEmbalagem = rows.reduce((a, r) => a + (r.fin.perOrderCost || 0), 0)
+  const nEmbalagem   = rows.filter(r => (r.fin.perOrderCost || 0) > 0).length
+  const embUnit      = nEmbalagem > 0 ? totEmbalagem / nEmbalagem : 0
 
   // ── Category breakdown via fichas técnicas ──
   // catData: totais por categoria · prodData[cat]: detalhe por produto (para expandir)
@@ -3082,6 +3086,13 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap,
         <th style="text-align:right;color:#7DB3FF">MK ×</th>
       </tr></thead>
       <tbody>${catRows}
+        ${totEmbalagem > 0 ? `<tr title="Saco de papel — custo aplicado 1× por pedido, não atribuível a uma categoria">
+          <td style="color:#bbb;font-weight:400">Embalagem por pedido <span style="color:#888;font-size:11px">(${nEmbalagem} × ${fmtBRL(embUnit)})</span></td>
+          <td></td><td></td>
+          <td style="color:#aaa">${fmtBRL(totEmbalagem)}</td>
+          <td style="color:#F44336">−${fmtBRL(totEmbalagem)}</td>
+          <td></td><td></td>
+        </tr>` : ''}
         <tr><td>TOTAL</td><td></td>
           <td>${fmtBRL(totReceita)}</td><td>${fmtBRL(totCusto)}</td>
           <td>${fmtBRL(totLucro)}</td><td>${marginBarFill(totMargem)}</td><td></td>
