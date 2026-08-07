@@ -984,7 +984,11 @@ input[type="number"]{-moz-appearance:textfield}
     <!-- RECEITAS DOS MOLHOS -->
     <div class="fin-config-card" style="margin-top:20px">
       <div class="fin-config-title">Receitas dos Molhos</div>
-      <div class="fin-config-sub">Composição de cada molho base: ingredientes e quantidades (ml) por lote e rendimento total. Edite e salve — o custo é recalculado em cascata e reflete em todos os pratos que usam o molho.</div>
+      <div class="fin-config-sub">Composição de cada molho base: ingredientes e quantidades (ml) por lote e rendimento total. Edite e salve — o custo é recalculado em cascata e reflete em todos os pratos que usam o molho. Crie novos molhos aqui e eles ficam disponíveis para montar fichas de pratos, com seu custo calculado.</div>
+      <div class="art-toolbar" style="margin-bottom:4px">
+        <input type="text" id="molhoNewName" placeholder="Nome do novo molho… (ex.: Molho Tarê Picante)" style="flex:1;min-width:200px">
+        <button class="art-btn art-btn-primary" id="molhoCreateBtn" onclick="createMolho()">+ Novo molho</button>
+      </div>
       <div id="molhoRecipesGrid"><p style="color:#555;padding:20px 0">Carregando receitas…</p></div>
       <div style="margin-top:16px;display:flex;align-items:center;gap:14px">
         <button class="art-btn art-btn-primary" id="molhoSaveBtn" onclick="saveMolhoRecipes()">Salvar receitas</button>
@@ -3366,15 +3370,19 @@ function recomputeMolhoCosts(insumoMap) {
   const bySku = {}
   Object.values(insumoMap).forEach(i => { if (i && i.sku) bySku[i.sku] = i })
   const lookup = ref => insumoMap[ref] || bySku[ref]
+  // Todos os molhos: type 'molho', ou com receita gravada, ou no fallback embutido.
+  // Inclui molhos novos criados pelo usuário (não só os 4 do seed).
+  const molhos = Object.values(insumoMap).filter(i => i && (
+    i.type === 'molho'
+    || MOLHO_RECIPES[i.sku]
+    || (i.recipe && i.recipe.yield > 0 && Array.isArray(i.recipe.components))))
   for (let pass = 0; pass < 12; pass++) {
     let changed = false
-    for (const [sku, fallback] of Object.entries(MOLHO_RECIPES)) {
-      const ins = lookup(sku)
-      if (!ins) continue
+    for (const ins of molhos) {
       // Prefer Firestore-stored recipe (qty/yield model); fall back to hardcoded constant
       const recipe = (ins.recipe && ins.recipe.yield > 0 && Array.isArray(ins.recipe.components))
-        ? ins.recipe : fallback
-      if (!(recipe.yield > 0)) continue
+        ? ins.recipe : MOLHO_RECIPES[ins.sku]
+      if (!recipe || !(recipe.yield > 0)) continue
       let batchCost = 0, ok = true
       for (const c of recipe.components) {
         const comp = lookup(c.ref)
@@ -3432,9 +3440,19 @@ function renderMolhoEditor() {
       }).join('')
   }
 
-  container.innerHTML = Object.keys(MOLHO_RECIPES).map(sku => {
+  // Lista de molhos: os do seed + qualquer insumo type 'molho' criado pelo usuário.
+  const molhoList = Object.values(insumosSnapshot)
+    .filter(i => i.type === 'molho' || MOLHO_RECIPES[i.sku])
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  if (!molhoList.length) {
+    container.innerHTML = '<p style="color:#555;padding:20px 0">Nenhum molho ainda. Crie um com o botão “+ Novo molho” acima.</p>'
+    return
+  }
+
+  container.innerHTML = molhoList.map(insM => {
+    const sku    = insM.sku || insM.id   // identidade do card (ref)
     const recipe = getMolhoRecipe(sku)
-    const ins    = byRef[sku]
+    const ins    = byRef[sku] || insM
     const name   = ins ? ins.name : sku
     const cpu    = ins ? ins.costPerUnit : null
 
@@ -3475,7 +3493,7 @@ function renderMolhoEditor() {
 
     const dirty = !!molhoRecipesBuffer[sku]
 
-    return `<div class="molho-recipe-card${dirty ? '" style="border-color:#555' : ''}">
+    return `<div class="molho-recipe-card${dirty ? '" style="border-color:#555' : ''}" id="molho-card-${sku}">
       <div class="molho-recipe-header">
         <div>
           <span class="molho-recipe-name">${name}</span>
@@ -3575,6 +3593,43 @@ async function saveMolhoRecipes() {
     if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500) }
   } catch (e) { alert('Erro ao salvar receitas: ' + e.message) }
   finally { btn.disabled = false; btn.textContent = 'Salvar receitas' }
+}
+
+// Gera um SKU único MOL-* a partir do nome (sem colidir com insumos existentes)
+function genMolhoSku(name) {
+  const slug = (name || '').toUpperCase().normalize('NFD')
+    .replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'NOVO'
+  const existing = new Set(Object.values(insumosSnapshot).flatMap(i => [i.sku, i.id].filter(Boolean)))
+  let sku = 'MOL-' + slug, n = 1
+  while (existing.has(sku)) sku = 'MOL-' + slug + (++n)
+  return sku
+}
+
+// Cria um novo molho como insumo (doc id = SKU) com receita vazia, pronto para editar.
+// Fica imediatamente disponível no seletor de insumos das fichas técnicas.
+async function createMolho() {
+  const inp = document.getElementById('molhoNewName')
+  const name = (inp.value || '').trim()
+  if (!name) { inp.focus(); return }
+  const btn = document.getElementById('molhoCreateBtn')
+  btn.disabled = true; btn.textContent = 'Criando…'
+  try {
+    const sku = genMolhoSku(name)
+    await db.collection('insumos').doc(sku).set({
+      name, sku, type: 'molho', unit: 'ml', active: true,
+      costPerUnit: 0, bulkCost: 0, costPerLiter: 0,
+      recipe: { yield: 1000, components: [] },
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    })
+    inp.value = ''
+    await loadInsumos()
+    renderInsFilterChips()
+    renderInsTable()
+    renderMolhoEditor()
+    const card = document.getElementById('molho-card-' + sku)
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } catch (e) { alert('Erro ao criar molho: ' + e.message) }
+  finally { btn.disabled = false; btn.textContent = '+ Novo molho' }
 }
 
 // ── INSUMOS ──
