@@ -3676,9 +3676,40 @@ async function loadInsumos() {
   }
   insumosSnapshot = {}
   snap.docs.forEach(d => { insumosSnapshot[d.id] = { id: d.id, ...d.data() } })
+  await migrateMolhoRecipesToFirestore()  // persiste receitas do código no Firestore (1×, não destrutivo)
   recomputeMolhoCosts(insumosSnapshot)  // molhos mostram custo calculado da receita
   insumosBuffer = {}
   return Object.values(insumosSnapshot)
+}
+
+// Migração única e não-destrutiva: para cada molho do seed (MOLHO_RECIPES) cujo doc
+// no Firestore ainda NÃO tenha o campo `recipe` (modelo yield/qty), grava a receita
+// do código no Firestore. Nunca sobrescreve uma receita já editada e salva pelo usuário.
+// Depois disto, o Firestore é a única fonte de verdade; o código fica só como semente.
+async function migrateMolhoRecipesToFirestore() {
+  const bySku = {}
+  Object.values(insumosSnapshot).forEach(i => { if (i && i.sku) bySku[i.sku] = i })
+  const pending = []
+  for (const [sku, recipe] of Object.entries(MOLHO_RECIPES)) {
+    const ins = insumosSnapshot[sku] || bySku[sku]
+    if (!ins) continue
+    const hasRecipe = ins.recipe && ins.recipe.yield > 0 && Array.isArray(ins.recipe.components)
+    if (hasRecipe) continue   // já está no Firestore — respeita o que o usuário editou
+    pending.push({ docId: ins.id, recipe })
+  }
+  if (!pending.length) return
+  try {
+    const batch = db.batch()
+    pending.forEach(({ docId, recipe }) => {
+      batch.update(db.collection('insumos').doc(docId), { recipe })
+      const snap = insumosSnapshot[docId]
+      if (snap) snap.recipe = recipe   // reflete em memória sem recarregar
+    })
+    await batch.commit()
+    console.info('[Molhos] Receitas migradas ao Firestore:', pending.map(p => p.docId).join(', '))
+  } catch (e) {
+    console.warn('[Molhos] Falha na migração de receitas (segue usando fallback):', e.message)
+  }
 }
 
 function mergeInsumos() {
