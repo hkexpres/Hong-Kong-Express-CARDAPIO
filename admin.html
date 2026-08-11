@@ -390,6 +390,19 @@ tbody tr:hover td{background:rgba(255,255,255,0.03)}
   border-radius:12px;transition:background .15s;
 }
 .ficha-chip:hover{ background:rgba(255,193,7,.35); }
+.ficha-suggest{
+  position:absolute;left:0;right:0;top:calc(100% - 4px);z-index:40;
+  background:var(--bg2,#1c1c1c);border:1px solid #444;border-radius:8px;
+  max-height:300px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5);
+}
+.ficha-suggest-item{
+  display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:14px;cursor:pointer;
+  border-bottom:1px solid rgba(255,255,255,.05);color:var(--white);
+}
+.ficha-suggest-item:last-child{ border-bottom:none; }
+.ficha-suggest-item:hover,.ficha-suggest-item.active{ background:rgba(255,193,7,.16); }
+.ficha-suggest-item .fs-sku{ color:#777;font-size:11px;margin-left:auto }
+.ficha-suggest-empty{ padding:10px 12px;color:#777;font-size:13px; }
 .erp-banner{
   display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;
   background:rgba(76,175,80,.10);border:1px solid rgba(76,175,80,.35);
@@ -1004,7 +1017,11 @@ input[type="number"]{-moz-appearance:textfield}
       <div class="fin-config-sub">Defina quanto de cada insumo leva cada prato (g / ml / unidade). Selecione um prato ou acompanhamento no menu abaixo para criar ou editar sua ficha. Os combos calculam-se automaticamente a partir das fichas dos pratos que os compõem.</div>
       <div class="manual-row">
         <label>Prato / Acompanhamento
-          <input type="search" id="fichaProdSearch" class="art-inp" style="width:100%;margin-bottom:6px" placeholder="🔎 Buscar ficha… (nome ou SKU)" autocomplete="off">
+          <div style="position:relative">
+            <input type="search" id="fichaProdSearch" class="art-inp" style="width:100%;margin-bottom:6px" placeholder="🔎 Buscar ficha… (nome ou SKU)" autocomplete="off"
+              oninput="onFichaSearchInput()" onkeydown="onFichaSearchKey(event)" onfocus="onFichaSearchInput()" onblur="setTimeout(hideFichaSuggest,120)">
+            <div id="fichaProdSuggest" class="ficha-suggest" style="display:none"></div>
+          </div>
           <select id="fichaProdSelect" class="art-inp" style="width:100%">
             <option value="">Carregando…</option>
           </select>
@@ -4275,11 +4292,77 @@ function renderFichaProdSelect() {
       const has = fichaMap[p.id] && (fichaMap[p.id].lines || []).length
       return `<option value="${p.id}">${has ? '✓ ' : '○ '}${(p.name || '').replace(/"/g, '&quot;')}</option>`
     }).join('')
-  // Se a busca deixa exatamente 1 resultado, seleciona-o automaticamente
-  if (q && list.length === 1) {
-    sel.value = list[0].id
-    onFichaProdChange()
+}
+
+// ── Autocomplete de fichas: sugestões clicáveis ao digitar (sem abrir o <select>) ──
+let fichaSuggestList = []
+let fichaSuggestIdx  = -1
+
+function fichaMatches(q) {
+  q = (q || '').trim().toLowerCase()
+  if (!q) return []
+  return fichaProducts.filter(p => `${p.name || ''} ${p.sku || ''}`.toLowerCase().includes(q))
+}
+
+function onFichaSearchInput() {
+  renderFichaProdSelect()   // mantém o <select> filtrado em sincronia
+  const q = document.getElementById('fichaProdSearch').value
+  fichaSuggestList = fichaMatches(q).slice(0, 12)
+  fichaSuggestIdx  = -1
+  renderFichaSuggest(q)
+}
+
+function renderFichaSuggest(q) {
+  const box = document.getElementById('fichaProdSuggest')
+  if (!box) return
+  if (!q || !q.trim()) { box.style.display = 'none'; box.innerHTML = ''; return }
+  if (!fichaSuggestList.length) {
+    box.innerHTML = '<div class="ficha-suggest-empty">Nenhuma ficha encontrada</div>'
+    box.style.display = 'block'; return
   }
+  box.innerHTML = fichaSuggestList.map((p, i) => {
+    const has = fichaMap[p.id] && (fichaMap[p.id].lines || []).length
+    return `<div class="ficha-suggest-item${i === fichaSuggestIdx ? ' active' : ''}" data-idx="${i}"
+      onmousedown="event.preventDefault()" onclick="pickFichaSuggest(${i})">
+      <span>${has ? '✓' : '○'}</span>
+      <span>${(p.name || '').replace(/</g, '&lt;')}</span>
+      <span class="fs-sku">${p.sku || ''}</span>
+    </div>`
+  }).join('')
+  box.style.display = 'block'
+}
+
+function pickFichaSuggest(i) {
+  const p = fichaSuggestList[i]
+  if (!p) return
+  hideFichaSuggest()
+  const search = document.getElementById('fichaProdSearch')
+  if (search) search.value = p.name || ''
+  renderFichaProdSelect()
+  selectFichaProduct(p.id)
+}
+
+function onFichaSearchKey(e) {
+  const box  = document.getElementById('fichaProdSuggest')
+  const open = box && box.style.display === 'block' && fichaSuggestList.length
+  if (e.key === 'ArrowDown') {
+    if (!open) return
+    e.preventDefault(); fichaSuggestIdx = Math.min(fichaSuggestIdx + 1, fichaSuggestList.length - 1); renderFichaSuggest(e.target.value)
+  } else if (e.key === 'ArrowUp') {
+    if (!open) return
+    e.preventDefault(); fichaSuggestIdx = Math.max(fichaSuggestIdx - 1, 0); renderFichaSuggest(e.target.value)
+  } else if (e.key === 'Enter') {
+    if (!open) return
+    e.preventDefault(); pickFichaSuggest(fichaSuggestIdx >= 0 ? fichaSuggestIdx : 0)
+  } else if (e.key === 'Escape') {
+    hideFichaSuggest()
+  }
+}
+
+function hideFichaSuggest() {
+  const box = document.getElementById('fichaProdSuggest')
+  if (box) box.style.display = 'none'
+  fichaSuggestIdx = -1
 }
 
 function renderFichaInsSelect() {
@@ -4470,7 +4553,8 @@ async function initFichas() {
     document.getElementById('fichaEditorCard').style.display = 'none'
     sel.onchange = onFichaProdChange
     const search = document.getElementById('fichaProdSearch')
-    if (search) { search.value = ''; search.oninput = renderFichaProdSelect }
+    if (search) search.value = ''
+    hideFichaSuggest()
     document.getElementById('fichaInsSelect').onchange = updateFichaUnitHint
   } catch (e) {
     console.error('Fichas load error:', e)
