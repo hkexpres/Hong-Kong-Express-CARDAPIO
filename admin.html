@@ -965,7 +965,7 @@ input[type="number"]{-moz-appearance:textfield}
           <option value="unidad">unidade</option>
         </select>
         <input type="number" id="insNewCost" class="art-inp" style="width:130px" min="0" step="0.0001" placeholder="Custo granel R$">
-        <button class="art-btn art-btn-primary" onclick="addInsumoRow()">+ Criar</button>
+        <button class="art-btn art-btn-primary" id="insAddBtn" onclick="addInsumoRow()">+ Criar</button>
       </div>
 
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 14px">
@@ -3907,17 +3907,33 @@ async function saveInsumos() {
   finally { btn.disabled = false; btn.textContent = 'Salvar alterações' }
 }
 
-function addInsumoRow() {
-  const name = document.getElementById('insNewName').value.trim()
-  if (!name) { document.getElementById('insNewName').focus(); return }
+// Cria o insumo e persiste IMEDIATAMENTE no Firestore (sem depender de
+// "Salvar alterações"). Evita perder um insumo recém-criado ao trocar de aba.
+async function addInsumoRow() {
+  const nameEl = document.getElementById('insNewName')
+  const name = nameEl.value.trim()
+  if (!name) { nameEl.focus(); return }
   const type  = document.getElementById('insNewType').value
   const unit  = document.getElementById('insNewUnit').value
   const cost  = document.getElementById('insNewCost').value
-  const tmpId = '__new__' + Date.now()
-  insumosBuffer[tmpId] = { name, type, unit, active: true, ...deriveCost(unit, cost) }
-  document.getElementById('insNewName').value = ''
-  document.getElementById('insNewCost').value = ''
-  renderInsTable()
+  const fields = { name, type, unit, active: true, ...deriveCost(unit, cost) }
+  const btn = document.getElementById('insAddBtn')
+  if (btn) { btn.disabled = true; btn.textContent = 'Criando…' }
+  try {
+    const ref = db.collection('insumos').doc()
+    await ref.set({ ...fields, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+    insumosSnapshot[ref.id] = { id: ref.id, ...fields }   // reflete em memória, já persistido
+    nameEl.value = ''
+    document.getElementById('insNewCost').value = ''
+    renderInsFilterChips()
+    renderInsTable()
+    const msg = document.getElementById('insSavedMsg')
+    if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2000) }
+  } catch (e) {
+    alert('Erro ao criar insumo: ' + e.message)
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '+ Criar' }
+  }
 }
 
 async function initInsumos() {
