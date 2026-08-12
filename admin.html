@@ -1385,10 +1385,56 @@ auth.onAuthStateChanged(user => {
   }
 })
 
+// ── SALVAMENTO AUTOMÁTICO DE EDIÇÕES PENDENTES ──
+// Todo dado se persiste sozinho: criações já gravam na hora; as EDIÇÕES em
+// buffer (Catálogo, Insumos, receitas de Molhos e a ficha aberta) são gravadas
+// automaticamente ao trocar de aba, e um aviso aparece se fechar o navegador
+// com algo pendente. Assim nada se perde por esquecer "Salvar alterações".
+// Remove a entrada do buffer se ela não difere mais do snapshot (ex.: um toggle
+// de status que já foi persistido na hora) — evita falso "há alterações não salvas".
+function pruneIfClean(buffer, snapshot, id) {
+  const buf = buffer[id]; if (!buf) return
+  const snap = snapshot[id] || {}
+  const differs = Object.keys(buf).some(k => k !== 'id' && buf[k] !== snap[k])
+  if (!differs) delete buffer[id]
+}
+
+function hasPendingEdits() {
+  return (typeof artigosBuffer === 'object'      && Object.keys(artigosBuffer).length > 0)
+      || (typeof insumosBuffer === 'object'      && Object.keys(insumosBuffer).length > 0)
+      || (typeof molhoRecipesBuffer === 'object' && Object.keys(molhoRecipesBuffer).length > 0)
+      || fichaIsDirty()
+}
+
+function fichaIsDirty() {
+  if (typeof fichaCurrentId === 'undefined' || !fichaCurrentId) return false
+  const saved = (fichaMap[fichaCurrentId] && fichaMap[fichaCurrentId].lines) || []
+  const cur   = (fichaDraft || []).filter(l => l.qty > 0)
+  const norm  = arr => JSON.stringify(arr
+    .map(l => ({ insumoId: l.insumoId, qty: l.qty }))
+    .sort((a, b) => String(a.insumoId).localeCompare(String(b.insumoId))))
+  return norm(saved) !== norm(cur)
+}
+
+async function flushPendingEdits() {
+  try {
+    if (typeof artigosBuffer === 'object' && Object.keys(artigosBuffer).length) await saveArtigos()
+    if (typeof insumosBuffer === 'object' && Object.keys(insumosBuffer).length) await saveInsumos()
+    if (typeof molhoRecipesBuffer === 'object' && Object.keys(molhoRecipesBuffer).length) await saveMolhoRecipes()
+    if (fichaIsDirty()) await saveFicha()
+  } catch (e) { console.warn('flushPendingEdits:', e && e.message) }
+}
+
+// Aviso do navegador ao fechar/atualizar com edições não gravadas
+window.addEventListener('beforeunload', e => {
+  if (hasPendingEdits()) { e.preventDefault(); e.returnValue = '' }
+})
+
 // ── TABS ──
 document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     const tab = btn.dataset.tab
+    await flushPendingEdits()   // grava edições pendentes da aba atual antes de sair
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
     document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none')
@@ -3291,6 +3337,7 @@ async function toggleArtigoActive(id) {
   try {
     await db.collection('products').doc(id).update({ active: nowActive })
     if (artigosSnapshot[id]) artigosSnapshot[id].active = nowActive
+    pruneIfClean(artigosBuffer, artigosSnapshot, id)   // status já persistido: não deixa buffer "sujo"
     const msg = document.getElementById('artSavedMsg')
     if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2000) }
   } catch (e) {
@@ -3866,6 +3913,7 @@ async function toggleInsumoActive(id) {
   try {
     await db.collection('insumos').doc(id).update({ active: nowActive })
     if (insumosSnapshot[id]) insumosSnapshot[id].active = nowActive
+    pruneIfClean(insumosBuffer, insumosSnapshot, id)   // status já persistido: não deixa buffer "sujo"
     const msg = document.getElementById('insSavedMsg')
     if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2000) }
   } catch (e) {
