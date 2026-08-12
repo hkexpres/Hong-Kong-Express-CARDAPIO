@@ -3334,20 +3334,36 @@ async function saveArtigos() {
   finally { btn.disabled = false; btn.textContent = 'Salvar alterações' }
 }
 
-function addArtigoRow() {
-  const name = document.getElementById('artNewName').value.trim()
-  if (!name) { document.getElementById('artNewName').focus(); return }
+// Cria o artigo e persiste IMEDIATAMENTE no Firestore (sem depender de
+// "Salvar alterações"). Evita perder um produto recém-criado ao trocar de aba.
+async function addArtigoRow() {
+  const nameEl = document.getElementById('artNewName')
+  const name = nameEl.value.trim()
+  if (!name) { nameEl.focus(); return }
   const cat   = document.getElementById('artNewCat').value
   const price = parseFloat(document.getElementById('artNewPrice').value) || null
   const cost  = parseFloat(document.getElementById('artNewCost').value)  || null
   const sku   = document.getElementById('artNewSku').value.trim() || null
-  const tmpId = '__new__' + Date.now()
-  artigosBuffer[tmpId] = { name, category: cat, price, cost, active: true, ...(sku ? { sku } : {}) }
-  document.getElementById('artNewName').value  = ''
-  document.getElementById('artNewPrice').value = ''
-  document.getElementById('artNewCost').value  = ''
-  document.getElementById('artNewSku').value   = ''
-  renderArtTable()
+  const fields = { name, category: cat, price, cost, active: true, ...(sku ? { sku } : {}) }
+  const btn = document.getElementById('artAddBtn')
+  if (btn) { btn.disabled = true; btn.textContent = 'Criando…' }
+  try {
+    const ref = db.collection('products').doc()
+    await ref.set({ ...fields, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+    artigosSnapshot[ref.id] = { id: ref.id, ...fields }   // reflete em memória, já persistido
+    cachedUniqueItems = null
+    nameEl.value = ''
+    document.getElementById('artNewPrice').value = ''
+    document.getElementById('artNewCost').value  = ''
+    document.getElementById('artNewSku').value   = ''
+    renderArtTable()
+    const msg = document.getElementById('artSavedMsg')
+    if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2000) }
+  } catch (e) {
+    alert('Erro ao criar artigo: ' + e.message)
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '+ Criar' }
+  }
 }
 
 async function initArtigos() {
