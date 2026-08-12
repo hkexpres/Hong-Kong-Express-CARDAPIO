@@ -3369,6 +3369,10 @@ async function addArtigoRow() {
 async function initArtigos() {
   const body = document.getElementById('artTableBody')
   body.innerHTML = '<tr><td colspan="7" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr>'
+  // Reseta filtro/busca ao entrar para nunca esconder um produto por estado antigo
+  artFilterCat = 'all'
+  const searchEl = document.getElementById('artSearch')
+  if (searchEl) searchEl.value = ''
   try {
     await loadArtigos()
     renderArtTable()
