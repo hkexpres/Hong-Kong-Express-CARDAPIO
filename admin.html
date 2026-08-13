@@ -1250,9 +1250,26 @@ const SKU_GROUP = [
   [/^B-/,        'Bebidas & Molhos'],
   [/^(SAL-|MO-)/,'Bebidas & Molhos'],
 ]
+// Catálogo vivo indexado por SKU (chaves em MAIÚSCULA). Preenchido pelos loaders
+// (dashboard, finanças). Permite derivar família/categoria de SKUs novos direto
+// do catálogo, sem precisar hardcodear cada produto novo em SKU_GROUP.
+let prodCatalogBySku = {}
+function indexProdCatalog(prodBySku) {
+  prodCatalogBySku = {}
+  Object.entries(prodBySku || {}).forEach(([k, v]) => { if (k) prodCatalogBySku[String(k).toUpperCase()] = v })
+}
+function cleanGroupName(name) {
+  return String(name || '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+    .replace(/\s+/g, ' ').trim()
+}
+
 function groupFromSku(sku) {
   const s = String(sku || '').toUpperCase()
   for (const [re, g] of SKU_GROUP) if (re.test(s)) return g
+  // Fallback: produto não mapeado → usa o nome real do catálogo (sem hardcode)
+  const p = prodCatalogBySku[s]
+  if (p && p.name) return cleanGroupName(p.name)
   return null
 }
 // Categoria a partir do SKU (fonte de verdade)
@@ -1263,6 +1280,9 @@ function categoryFromSku(sku) {
   if (/^GYZ-/.test(s)) return 'acomp'
   if (/^B-/.test(s))   return 'bebidas'
   if (/^(SAL|MO)-/.test(s)) return 'molhos'
+  // Fallback: produto não mapeado → categoria do catálogo
+  const p = prodCatalogBySku[s]
+  if (p && p.category) return normalizeCat(p.category) || p.category
   return null
 }
 
@@ -1538,9 +1558,15 @@ async function loadDashboard() {
   setDateLabel('datesMesAnterior',   prevMonthStart,prevMonthEnd)
 
   try {
-    const snap = await db.collection('orders')
-      .where('createdAt', '>=', twelveAgo)
-      .get()
+    const [snap, prodSnap] = await Promise.all([
+      db.collection('orders').where('createdAt', '>=', twelveAgo).get(),
+      db.collection('products').get(),
+    ])
+
+    // Indexa o catálogo p/ derivar família/categoria de SKUs novos sem hardcode
+    const _pbs = {}
+    prodSnap.docs.forEach(d => { const p = { id: d.id, ...d.data() }; if (p.sku) _pbs[p.sku] = p; _pbs[d.id] = p })
+    indexProdCatalog(_pbs)
 
     const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .filter(o => o.status === 'confirmed')
@@ -2815,6 +2841,7 @@ async function loadFinancas() {
       if (d.id)   prodBySku[d.id]  = p   // doc id = SKU p/ produtos ERP (mesmo sem campo sku)
       if (p.name) prodByName[p.name.toLowerCase().trim()] = p
     })
+    indexProdCatalog(prodBySku)   // catálogo p/ derivar categoria de SKUs novos sem hardcode
 
     const insumoMap = {}
     insSnap.docs.forEach(d => { insumoMap[d.id] = { id: d.id, ...d.data() } })
@@ -5069,6 +5096,7 @@ async function loadConsumos() {
       if (d.id)   prodBySku[d.id]  = p   // doc id = SKU p/ produtos ERP (mesmo sem campo sku)
       if (p.name) prodByName[p.name.toLowerCase().trim()] = p
     })
+    indexProdCatalog(prodBySku)   // catálogo p/ derivar categoria de SKUs novos sem hardcode
 
     const insumoMap = {}
     insSnap.docs.forEach(d => { insumoMap[d.id] = { id: d.id, ...d.data() } })
