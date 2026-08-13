@@ -1241,6 +1241,7 @@ const SKU_GROUP = [
   [/^CM-/,       'Chow Mein'],
   [/^CS-/,       'Chop Suey'],
   [/^SK-/,       'Shiitake Agrid.'],
+  [/^FRG-/,      'Frango Shiitake'],
   [/^TRY-/,      'Carne Teriyaki'],
   [/^AGP-/,      'Agripicante'],
   [/^KP-/,       'Kung Pao'],
@@ -1257,7 +1258,7 @@ function groupFromSku(sku) {
 // Categoria a partir do SKU (fonte de verdade)
 function categoryFromSku(sku) {
   const s = String(sku || '').toUpperCase()
-  if (/^(CF|CM|CS|SK|TRY|AGP|KP)-/.test(s)) return 'pratos'
+  if (/^(CF|CM|CS|SK|FRG|TRY|AGP|KP)-/.test(s)) return 'pratos'
   if (/^CMB-/.test(s)) return 'combos'
   if (/^GYZ-/.test(s)) return 'acomp'
   if (/^B-/.test(s))   return 'bebidas'
@@ -1270,6 +1271,7 @@ const GROUPS = [
   { name: 'Chow Fan',       test: n => /ch[ao][ow] fan/.test(n) },
   { name: 'Chow Mein',      test: n => /ch[ao][ow] mein/.test(n) },
   { name: 'Chop Suey',      test: n => n.includes('chop suey') },
+  { name: 'Frango Shiitake',test: n => /shi+take/.test(n) && n.includes('frango') },
   { name: 'Shiitake Agrid.',test: n => /shi+take/.test(n) },
   { name: 'Carne Teriyaki', test: n => n.includes('teriyaki') },
   { name: 'Agripicante',    test: n => n.includes('agripicante') },
@@ -5135,6 +5137,9 @@ const IFOOD_SKU_MAP = {
   // Shitake Agridoce
   'shiitake agridoce · com macarrão de sêmola':'SK-SEM', 'shitake agridoce · com macarrão de sêmola':'SK-SEM',
   'shiitake agridoce · com arroz tostado':'SK-ARZ',       'shitake agridoce · com arroz tostado':'SK-ARZ',
+  // Frango Shiitake (prato próprio, não confundir com o Shiitake Agridoce vegetariano)
+  'frango shiitake':'FRG-SKT', 'frango shitake':'FRG-SKT',
+  'frango shiitake · frango':'FRG-SKT', 'frango shitake · frango':'FRG-SKT',
   // Carne Teriyaki
   'carne teriyaki · carne':'TRY-CRN', 'carne teriyaki':'TRY-CRN',
   // Agripicante
