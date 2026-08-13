@@ -913,13 +913,15 @@ input[type="number"]{-moz-appearance:textfield}
             <th>Nome</th>
             <th>SKU</th>
             <th>Categoria</th>
+            <th title="Como o produto se agrupa no Dashboard (donut/ranking). Deixe igual entre variantes p/ juntá-las. Vazio = agrupa pelo nome.">Família ⓘ</th>
             <th style="text-align:right">Preço R$</th>
             <th style="text-align:right">Custo R$</th>
             <th style="text-align:center">Status</th>
             <th></th>
           </tr></thead>
-          <tbody id="artTableBody"><tr><td colspan="7" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr></tbody>
+          <tbody id="artTableBody"><tr><td colspan="8" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr></tbody>
         </table>
+        <datalist id="familyOptions"></datalist>
       </div>
       <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
         <button class="art-btn art-btn-primary" id="artSaveBtn">Salvar alterações</button>
@@ -1266,9 +1268,12 @@ function cleanGroupName(name) {
 
 function groupFromSku(sku) {
   const s = String(sku || '').toUpperCase()
-  for (const [re, g] of SKU_GROUP) if (re.test(s)) return g
-  // Fallback: produto não mapeado → usa o nome real do catálogo (sem hardcode)
   const p = prodCatalogBySku[s]
+  // 1) Família definida no catálogo (Firebase) — fonte de verdade, editável sem código
+  if (p && p.family) return cleanGroupName(p.family)
+  // 2) Semente embutida (SKU_GROUP) p/ produtos ainda sem família gravada
+  for (const [re, g] of SKU_GROUP) if (re.test(s)) return g
+  // 3) Último recurso: nome real do catálogo
   if (p && p.name) return cleanGroupName(p.name)
   return null
 }
@@ -3287,7 +3292,36 @@ async function loadArtigos() {
   artigosSnapshot = {}
   snap.docs.forEach(d => { artigosSnapshot[d.id] = { id: d.id, ...d.data() } })
   artigosBuffer = {}
+  await backfillFamilies()   // grava a família no Firestore p/ produtos que ainda não têm (1×, não destrutivo)
   return Object.values(artigosSnapshot)
+}
+
+// Migração única e não-destrutiva: para cada produto sem campo `family`, grava a
+// família derivada da regra atual (SKU_GROUP → nome). Depois disto o Dashboard
+// agrupa lendo o catálogo do Firebase; a tabela SKU_GROUP fica só como semente.
+function deriveFamily(sku, name) {
+  const s = String(sku || '').toUpperCase()
+  for (const [re, g] of SKU_GROUP) if (re.test(s)) return g
+  return cleanGroupName(name) || null
+}
+
+async function backfillFamilies() {
+  const pending = []
+  Object.values(artigosSnapshot).forEach(p => {
+    if (!p || p.family) return
+    const fam = deriveFamily(p.sku, p.name)
+    if (fam) pending.push({ id: p.id, family: fam })
+  })
+  if (!pending.length) return
+  try {
+    const batch = db.batch()
+    pending.forEach(({ id, family }) => {
+      batch.update(db.collection('products').doc(id), { family })
+      if (artigosSnapshot[id]) artigosSnapshot[id].family = family
+    })
+    await batch.commit()
+    console.info('[Famílias] Backfill gravado p/', pending.length, 'produto(s)')
+  } catch (e) { console.warn('[Famílias] Backfill falhou (segue usando fallback):', e && e.message) }
 }
 
 function mergeArtigos() {
@@ -3315,7 +3349,7 @@ function renderArtTable() {
   const body = document.getElementById('artTableBody')
   if (!items.length) {
     const msg = all.length ? 'Nenhum artigo neste filtro.' : 'Nenhum artigo cadastrado. Importe do histórico ou crie um novo.'
-    body.innerHTML = `<tr><td colspan="7" style="color:#555;padding:24px;text-align:center">${msg}</td></tr>`
+    body.innerHTML = `<tr><td colspan="8" style="color:#555;padding:24px;text-align:center">${msg}</td></tr>`
     return
   }
   body.innerHTML = items.map(it => {
@@ -3330,6 +3364,7 @@ function renderArtTable() {
       <td style="min-width:200px"><input class="art-inp" data-field="name" data-id="${it.id}" value="${(it.name||'').replace(/"/g,'&quot;')}"></td>
       <td><input class="art-inp" data-field="sku" data-id="${it.id}" value="${(it.sku||'').replace(/"/g,'&quot;')}" placeholder="SKU" style="width:88px"></td>
       <td><select class="art-inp" data-field="category" data-id="${it.id}">${catSel}</select></td>
+      <td><input class="art-inp" list="familyOptions" data-field="family" data-id="${it.id}" value="${(it.family||'').replace(/"/g,'&quot;')}" placeholder="(auto)" style="width:120px"></td>
       <td style="text-align:right"><input class="art-inp art-inp-price" type="number" min="0" step="0.01" data-field="price" data-id="${it.id}" value="${it.price||''}"></td>
       <td style="text-align:right"><input class="art-inp art-inp-cost" type="number" min="0" step="0.01" data-field="cost" data-id="${it.id}" value="${it.cost||''}"></td>
       <td style="text-align:center">
@@ -3348,9 +3383,22 @@ function renderArtTable() {
       const current = artigosBuffer[id] || { ...(artigosSnapshot[id] || {}) }
       let val = e.target.value
       if (field === 'price' || field === 'cost') val = parseFloat(val) || null
+      if (field === 'family') val = (val || '').trim()
       artigosBuffer[id] = { ...current, [field]: val }
     })
   })
+
+  // Sugestões de família (autocomplete) a partir das já existentes
+  const dl = document.getElementById('familyOptions')
+  if (dl) dl.innerHTML = knownFamilies().map(f => `<option value="${f.replace(/"/g, '&quot;')}">`).join('')
+}
+
+// Famílias conhecidas: as do seed (SKU_GROUP) + as já usadas nos produtos
+function knownFamilies() {
+  const set = new Set(SKU_GROUP.map(([, g]) => g))
+  Object.values(artigosSnapshot).forEach(p => { if (p && p.family) set.add(p.family) })
+  Object.values(artigosBuffer).forEach(p => { if (p && p.family) set.add(p.family) })
+  return [...set].sort((a, b) => a.localeCompare(b))
 }
 
 async function toggleArtigoActive(id) {
@@ -3420,7 +3468,8 @@ async function addArtigoRow() {
   const price = parseFloat(document.getElementById('artNewPrice').value) || null
   const cost  = parseFloat(document.getElementById('artNewCost').value)  || null
   const sku   = document.getElementById('artNewSku').value.trim() || null
-  const fields = { name, category: cat, price, cost, active: true, ...(sku ? { sku } : {}) }
+  const family = deriveFamily(sku, name)
+  const fields = { name, category: cat, price, cost, active: true, ...(sku ? { sku } : {}), ...(family ? { family } : {}) }
   const btn = document.getElementById('artAddBtn')
   if (btn) { btn.disabled = true; btn.textContent = 'Criando…' }
   try {
