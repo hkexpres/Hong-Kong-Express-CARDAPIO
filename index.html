@@ -1677,7 +1677,14 @@ firebase.initializeApp({
 })
 const db = firebase.firestore()
 
+// Persistência offline: grava o pedido localmente na hora (durável) e sincroniza
+// sozinha depois — mesmo que o cliente já tenha saltado para o WhatsApp. Deve ser
+// habilitada antes de qualquer outra operação do Firestore.
+const persistenceReady = db.enablePersistence({ synchronizeTabs: true })
+  .catch(err => console.warn('Persistência offline indisponível:', err && err.code))
+
 ;(async () => {
+  await persistenceReady          // espera a persistência antes da 1ª leitura
   try {
     await syncPricesFromFirestore()
   } catch (e) {
@@ -1763,7 +1770,7 @@ function showOrderToast(text) {
   setTimeout(() => { t.style.transition = 'opacity .5s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 500) }, 9000)
 }
 
-document.getElementById('modalSend').addEventListener('click', async () => {
+document.getElementById('modalSend').addEventListener('click', () => {
   const keys = Object.keys(cart)
   if (!keys.length) return
   modalActions.style.display = 'none'
@@ -1771,11 +1778,11 @@ document.getElementById('modalSend').addEventListener('click', async () => {
 
   const items = keys.map(k => {
     const it = cart[k]
-    return { name: it.name, price: it.price, qty: it.qty, ...(it.sku ? {sku: it.sku} : {}) }
+    return { name: it.name, price: it.price, qty: it.qty, ...(it.sku ? { sku: it.sku } : {}) }
   })
   const total = items.reduce((a, it) => a + it.price * it.qty, 0)
 
-  // read or create customer record (synchronous)
+  // Lê ou cria o registro do cliente (síncrono)
   let customer = loadCustomer()
   if (!customer) {
     const phone = document.getElementById('crmPhone').value.trim()
@@ -1786,15 +1793,9 @@ document.getElementById('modalSend').addEventListener('click', async () => {
     }
   }
 
-  let msg = '*Olá! Gostaria de fazer um pedido:*\n\n'
-  items.forEach(it => { msg += `• ${it.qty}x ${it.name} — ${fmtBRL(it.qty * it.price)}\n` })
-  msg += `\n*Total: ${fmtBRL(total)}*`
-  const waUrl = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg)
-
-  // Abre a aba do WhatsApp já DENTRO do gesto do clique (iOS bloqueia window.open após await),
-  // mas só a redireciona depois de tentar salvar — assim a gravação não é cortada pela troca de app.
-  const waWin = window.open('', '_blank')
-
+  // Grava o pedido ANTES de abrir o WhatsApp. Com a persistência offline ativa,
+  // a gravação fica registrada localmente na hora (durável) e sincroniza sozinha
+  // depois — mesmo que o cliente já tenha saltado para o WhatsApp.
   const orderData = {
     items,
     total,
@@ -1802,31 +1803,21 @@ document.getElementById('modalSend').addEventListener('click', async () => {
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
   }
   if (customer) orderData.customer = { phone: customer.phone || '', name: customer.name || '' }
-
-  // Espera a gravação (com teto de 8s) ANTES de sair para o WhatsApp
-  let saved = true
-  try {
-    await Promise.race([
-      db.collection('orders').add(orderData),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
-    ])
-  } catch (err) {
-    saved = false
+  db.collection('orders').add(orderData).catch(err => {
     console.error('Firestore error:', err)
-  }
-
-  // O pedido SEMPRE vai ao WhatsApp (tem que chegar de qualquer forma)
-  if (waWin && !waWin.closed) waWin.location = waUrl
-  else window.open(waUrl, '_blank')
-
-  modalSpinner.classList.remove('show')
-  modalActions.style.display = ''
-  confirmModal.classList.remove('open')
-  clearCart()
-
-  if (!saved) {
     showOrderToast('⚠️ Tivemos um problema ao registrar seu pedido no sistema, mas ele foi aberto no WhatsApp — é só enviar a mensagem para confirmar. Desculpe o transtorno! 🙏')
-  }
+  })
+
+  // Abre o WhatsApp com o pedido pronto (sem aba em branco, sem espera)
+  let msg = '*Olá! Gostaria de fazer um pedido:*\n\n'
+  items.forEach(it => { msg += `• ${it.qty}x ${it.name} — ${fmtBRL(it.qty * it.price)}\n` })
+  msg += `\n*Total: ${fmtBRL(total)}*`
+  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank')
+
+  confirmModal.classList.remove('open')
+  modalActions.style.display = ''
+  modalSpinner.classList.remove('show')
+  clearCart()
 })
 </script>
 </body>
