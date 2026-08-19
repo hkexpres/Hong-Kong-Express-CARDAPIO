@@ -1412,6 +1412,17 @@ auth.onAuthStateChanged(user => {
   }
 })
 
+// ── ATUALIZAÇÃO AO VOLTAR PARA A ABA ──
+// O listener em tempo real da Semana pode ser suspenso pelo navegador enquanto a
+// aba do admin fica em segundo plano. Ao voltar o foco, re-assina para trazer os
+// pedidos mais recentes na hora — sem precisar atualizar a página manualmente.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !auth.currentUser) return
+  listenHoje()
+  const active = document.querySelector('.tab-btn.active')
+  if (active && active.dataset.tab === 'dashboard') loadDashboard()
+})
+
 // ── SALVAMENTO AUTOMÁTICO DE EDIÇÕES PENDENTES ──
 // Todo dado se persiste sozinho: criações já gravam na hora; as EDIÇÕES em
 // buffer (Catálogo, Insumos, receitas de Molhos e a ficha aberta) são gravadas
