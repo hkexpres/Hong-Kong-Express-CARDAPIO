@@ -1408,6 +1408,7 @@ auth.onAuthStateChanged(user => {
     document.getElementById('adminPanel').style.display = 'none'
     if (hojeUnsubscribe) { hojeUnsubscribe(); hojeUnsubscribe = null }
     if (dashboardRefreshInterval) { clearInterval(dashboardRefreshInterval); dashboardRefreshInterval = null }
+    if (hojeRefreshInterval) { clearInterval(hojeRefreshInterval); hojeRefreshInterval = null }
     prevPendingCount = -1
   }
 })
@@ -1510,6 +1511,7 @@ document.querySelectorAll('.period-btn').forEach(btn => {
 // ── INIT ──
 let hojeUnsubscribe = null
 let dashboardRefreshInterval = null
+let hojeRefreshInterval = null
 
 function initAdmin() {
   // set default detalhe dates (current month)
@@ -1525,14 +1527,14 @@ function initAdmin() {
   // auto-refresh dashboard every 5 minutes
   if (dashboardRefreshInterval) clearInterval(dashboardRefreshInterval)
   dashboardRefreshInterval = setInterval(loadDashboard, 5 * 60 * 1000)
+
+  // Rede de segurança da Semana: re-assina a cada 30s para que novos pedidos
+  // apareçam sozinhos (e toquem o aviso), mesmo se o navegador suspender o
+  // listener em tempo real com a aba em segundo plano.
+  if (hojeRefreshInterval) clearInterval(hojeRefreshInterval)
+  hojeRefreshInterval = setInterval(() => { if (auth.currentUser) listenHoje() }, 30 * 1000)
 }
 
-// refresh dashboard when user returns to the tab
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && document.getElementById('adminPanel').style.display !== 'none') {
-    loadDashboard()
-  }
-})
 
 function initFinancas() {
   const now = new Date()
