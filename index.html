@@ -1808,7 +1808,7 @@ document.getElementById('modalSend').addEventListener('click', async () => {
   try {
     await Promise.race([
       db.collection('orders').add(orderData),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
     ])
   } catch (err) {
     saved = false
