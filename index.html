@@ -1754,7 +1754,16 @@ document.getElementById('modalBack').addEventListener('click', () => {
   confirmModal.classList.remove('open')
 })
 
-document.getElementById('modalSend').addEventListener('click', () => {
+// Aviso flutuante ao cliente (usado se o registro do pedido falhar)
+function showOrderToast(text) {
+  const t = document.createElement('div')
+  t.textContent = text
+  t.style.cssText = 'position:fixed;left:16px;right:16px;bottom:20px;z-index:99999;max-width:520px;margin:0 auto;background:#3a1c1c;color:#fff;border:1px solid #c06a6a;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.45;text-align:center;box-shadow:0 10px 34px rgba(0,0,0,.55)'
+  document.body.appendChild(t)
+  setTimeout(() => { t.style.transition = 'opacity .5s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 500) }, 9000)
+}
+
+document.getElementById('modalSend').addEventListener('click', async () => {
   const keys = Object.keys(cart)
   if (!keys.length) return
   modalActions.style.display = 'none'
@@ -1777,14 +1786,15 @@ document.getElementById('modalSend').addEventListener('click', () => {
     }
   }
 
-  // Build WhatsApp URL synchronously and open BEFORE any async operation.
-  // iOS Safari blocks window.open() called after an await (outside user gesture context).
   let msg = '*Olá! Gostaria de fazer um pedido:*\n\n'
   items.forEach(it => { msg += `• ${it.qty}x ${it.name} — ${fmtBRL(it.qty * it.price)}\n` })
   msg += `\n*Total: ${fmtBRL(total)}*`
-  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank')
+  const waUrl = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg)
 
-  // Save to Firestore in background (fire-and-forget, no await needed)
+  // Abre a aba do WhatsApp já DENTRO do gesto do clique (iOS bloqueia window.open após await),
+  // mas só a redireciona depois de tentar salvar — assim a gravação não é cortada pela troca de app.
+  const waWin = window.open('', '_blank')
+
   const orderData = {
     items,
     total,
@@ -1792,12 +1802,31 @@ document.getElementById('modalSend').addEventListener('click', () => {
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
   }
   if (customer) orderData.customer = { phone: customer.phone || '', name: customer.name || '' }
-  db.collection('orders').add(orderData).catch(err => console.error('Firestore error:', err))
 
-  confirmModal.classList.remove('open')
-  modalActions.style.display = ''
+  // Espera a gravação (com teto de 8s) ANTES de sair para o WhatsApp
+  let saved = true
+  try {
+    await Promise.race([
+      db.collection('orders').add(orderData),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+    ])
+  } catch (err) {
+    saved = false
+    console.error('Firestore error:', err)
+  }
+
+  // O pedido SEMPRE vai ao WhatsApp (tem que chegar de qualquer forma)
+  if (waWin && !waWin.closed) waWin.location = waUrl
+  else window.open(waUrl, '_blank')
+
   modalSpinner.classList.remove('show')
+  modalActions.style.display = ''
+  confirmModal.classList.remove('open')
   clearCart()
+
+  if (!saved) {
+    showOrderToast('⚠️ Tivemos um problema ao registrar seu pedido no sistema, mas ele foi aberto no WhatsApp — é só enviar a mensagem para confirmar. Desculpe o transtorno! 🙏')
+  }
 })
 </script>
 </body>
