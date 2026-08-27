@@ -1341,6 +1341,7 @@ function setDateLabel(elId, from, to) {
 let allDashboardOrders = []
 let detalheSummaryData = []
 let detalheProdData = []   // agregação por SKU (mescla variantes de nome) p/ o donut de pratos
+let detalheProdBySku = {}, detalheProdByName = {}, detalheFichaByProdId = {}, detalheInsumoMap = {}   // mapas de custo (mesma fonte do Finanças)
 
 // ── AUDIO NOTIFICATION ──
 let audioCtx = null
@@ -2106,11 +2107,27 @@ async function loadDetalhe() {
   const toDate   = endOfDay(new Date(to + 'T00:00:00'))
 
   try {
-    const snap = await db.collection('orders')
-      .where('createdAt', '>=', fromDate)
-      .where('createdAt', '<=', toDate)
-      .orderBy('createdAt', 'asc')
-      .get()
+    const [snap, prodSnap, recSnap, insSnap] = await Promise.all([
+      db.collection('orders')
+        .where('createdAt', '>=', fromDate)
+        .where('createdAt', '<=', toDate)
+        .orderBy('createdAt', 'asc')
+        .get(),
+      db.collection('products').get(),
+      db.collection('recipes').get(),
+      db.collection('insumos').get(),
+    ])
+
+    // Mapas de custo — mesma fonte do Finanças (ficha → fallback custo do catálogo)
+    detalheProdBySku = {}; detalheProdByName = {}
+    prodSnap.docs.forEach(d => { const p = { id: d.id, ...d.data() }
+      if (p.sku) detalheProdBySku[p.sku] = p
+      if (d.id)  detalheProdBySku[d.id]  = p
+      if (p.name) detalheProdByName[p.name.toLowerCase().trim()] = p })
+    indexProdCatalog(detalheProdBySku)
+    detalheInsumoMap = {}; insSnap.docs.forEach(d => { detalheInsumoMap[d.id] = { id: d.id, ...d.data() } })
+    recomputeMolhoCosts(detalheInsumoMap)
+    detalheFichaByProdId = {}; recSnap.docs.forEach(d => { detalheFichaByProdId[d.id] = d.data() })
 
     const statusFilter = document.getElementById('filterStatus').value
     const allInRange = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -2248,28 +2265,31 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
     grand.total += r.total
   })
 
-  // Summary data for the bottom section
+  // Summary + agregação por SKU, com CUSTO por item (mesma fonte do Finanças:
+  // ficha → fallback custo do catálogo, via calcOrderFinance).
   const summaryMap = {}
+  const prodMap = {}
   orders.forEach(o => {
-    ;(o.items || []).forEach(it => {
-      if (!summaryMap[it.name]) summaryMap[it.name] = { qty: 0, total: 0, group: classifyItem(it.name) }
+    const fin = calcOrderFinance(o, detalheProdBySku, detalheProdByName, detalheFichaByProdId, detalheInsumoMap)
+    ;(o.items || []).forEach((it, idx) => {
+      const cst = (fin.items[idx] && fin.items[idx].custo) || 0
+      // por nome (subtotal por item)
+      if (!summaryMap[it.name]) summaryMap[it.name] = { qty: 0, total: 0, cost: 0, group: classifyItem(it.name) }
       summaryMap[it.name].qty   += it.qty
       summaryMap[it.name].total += it.qty * it.price
+      summaryMap[it.name].cost  += cst
+      // por SKU (mescla variantes de nome do mesmo produto)
+      const cat = categoryFromSku(it.sku) || classifyItem(it.name)
+      const key = it.sku || ('_' + (it.name || '').toLowerCase().replace(/\s+/g, ' ').trim())
+      if (!prodMap[key]) prodMap[key] = { sku: it.sku || null, name: it.name, qty: 0, total: 0, cost: 0, group: cat }
+      prodMap[key].qty   += it.qty
+      prodMap[key].total += it.qty * it.price
+      prodMap[key].cost  += cst
     })
   })
   detalheSummaryData = Object.entries(summaryMap)
     .map(([name, v]) => ({ name, ...v }))
     .sort((a, b) => b.total - a.total)
-
-  // Agregação por SKU — mescla variantes de nome (Chao/Chow, maiúsc/minúsc) do mesmo produto
-  const prodMap = {}
-  orders.forEach(o => (o.items || []).forEach(it => {
-    const cat = categoryFromSku(it.sku) || classifyItem(it.name)
-    const key = it.sku || ('_' + (it.name || '').toLowerCase().replace(/\s+/g, ' ').trim())
-    if (!prodMap[key]) prodMap[key] = { sku: it.sku || null, name: it.name, qty: 0, total: 0, group: cat }
-    prodMap[key].qty   += it.qty
-    prodMap[key].total += it.qty * it.price
-  }))
   detalheProdData = Object.values(prodMap).sort((a, b) => b.total - a.total)
 
   // Helper: format a group cell (qty + BRL)
@@ -2389,11 +2409,28 @@ function updateSummarySection() {
     return
   }
 
-  const rows = filtered.map(d => `<tr>
-    <td>${d.name}</td>
-    <td style="text-align:center">${d.qty}</td>
-    <td style="text-align:right;color:#F0E870;font-weight:600">${fmtBRL(d.total)}</td>
-  </tr>`).join('')
+  const rows = filtered.map((d, i) => {
+    const custoUn = d.qty > 0 ? (d.cost || 0) / d.qty : 0
+    const precoUn = d.qty > 0 ? d.total / d.qty : 0
+    const lucroUn = precoUn - custoUn
+    const marg    = d.total > 0 ? (d.total - (d.cost || 0)) / d.total * 100 : 0
+    const hasCost = (d.cost || 0) > 0
+    const margColor = marg >= 50 ? 'var(--green2)' : marg >= 30 ? '#F0C060' : '#F44336'
+    const detail = hasCost
+      ? `<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:#bbb">
+           <span>Preço/un: <strong style="color:#F0E870">${fmtBRL(precoUn)}</strong></span>
+           <span>Custo/un: <strong style="color:#aaa">${fmtBRL(custoUn)}</strong></span>
+           <span>Lucro/un: <strong style="color:${lucroUn>=0?'var(--green2)':'#F44336'}">${fmtBRL(lucroUn)}</strong></span>
+           <span>Margem: <strong style="color:${margColor}">${marg.toFixed(0)}%</strong></span>
+         </div>`
+      : `<span style="font-size:12px;color:#888">Sem ficha/custo para este item — carregue a ficha para ver o margem.</span>`
+    return `<tr class="sum-row" style="cursor:pointer" onclick="toggleSumDetail(${i})" title="Clique para ver o margem por unidade">
+      <td><span id="sumCaret-${i}" style="display:inline-block;width:12px;color:#888">▶</span> ${d.name}</td>
+      <td style="text-align:center">${d.qty}</td>
+      <td style="text-align:right;color:#F0E870;font-weight:600">${fmtBRL(d.total)}</td>
+    </tr>
+    <tr id="sumDetail-${i}" style="display:none"><td colspan="3" style="padding:6px 10px 10px 24px;background:rgba(255,255,255,.02)">${detail}</td></tr>`
+  }).join('')
 
   wrap.innerHTML = `
     <table class="summary-table">
@@ -2414,6 +2451,16 @@ function updateSummarySection() {
   const pratos = checked.includes('pratos') ? detalheProdData.filter(d => d.group === 'pratos') : []
   buildPratoDonut(pratos)
   renderCategoryBars(filtered)
+}
+
+// Expande/recolhe o detalhe (margem por unidade) de um item do subtotal
+function toggleSumDetail(i) {
+  const row = document.getElementById('sumDetail-' + i)
+  const caret = document.getElementById('sumCaret-' + i)
+  if (!row) return
+  const show = row.style.display === 'none'
+  row.style.display = show ? 'table-row' : 'none'
+  if (caret) caret.style.transform = show ? 'rotate(90deg)' : 'rotate(0deg)'
 }
 
 // Donut do RANKING DE PRATOS — por unidades (dados já mesclados por SKU)
