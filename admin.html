@@ -4752,13 +4752,16 @@ async function saveFicha() {
     })
     fichaMap[fichaCurrentId] = { productName: prod ? prod.name : '', lines }
     // Grava o custo calculado no produto → aparece no Catálogo (e serve de fallback)
-    if (lines.length) {
+    if (lines.length && isFinite(cost)) {
       try {
-        await db.collection('products').doc(fichaCurrentId).update({ cost })
+        await db.collection('products').doc(fichaCurrentId).set({ cost }, { merge: true })
         if (prod) prod.cost = cost
         if (typeof artigosSnapshot === 'object' && artigosSnapshot[fichaCurrentId]) artigosSnapshot[fichaCurrentId].cost = cost
         cachedUniqueItems = null
-      } catch (e2) { console.warn('Custo não gravado no produto:', e2 && e2.message) }
+      } catch (e2) {
+        console.warn('Custo não gravado no produto:', e2 && e2.message)
+        alert('A ficha foi salva, mas não consegui gravar o custo no produto:\n' + (e2 && e2.message))
+      }
     }
     renderFichaProdSelect()
     renderFichaMissingBanner()
