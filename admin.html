@@ -4627,6 +4627,15 @@ async function deleteFicha() {
   } catch (e) { alert('Erro ao eliminar ficha: ' + e.message) }
 }
 
+// Custo total de uma ficha: soma (qtd / rendimento) × custo unitário de cada insumo
+function fichaCostOf(lines) {
+  return (lines || []).reduce((sum, l) => {
+    const ins = insumoById(l.insumoId)
+    const cpu = ins && ins.costPerUnit != null ? ins.costPerUnit : 0
+    return sum + cpu * ((l.qty || 0) / insRend(ins))
+  }, 0)
+}
+
 function renderFichaLines() {
   const body = document.getElementById('fichaLinesBody')
   if (!fichaDraft.length) {
@@ -4733,6 +4742,7 @@ async function saveFicha() {
   if (!fichaCurrentId) return
   const prod = fichaProducts.find(p => p.id === fichaCurrentId)
   const lines = fichaDraft.filter(l => l.qty > 0).map(l => ({ insumoId: l.insumoId, qty: l.qty }))
+  const cost = Math.round(fichaCostOf(lines) * 10000) / 10000   // custo calculado da ficha
   try {
     await db.collection('recipes').doc(fichaCurrentId).set({
       productName: prod ? prod.name : '',
@@ -4741,13 +4751,27 @@ async function saveFicha() {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     })
     fichaMap[fichaCurrentId] = { productName: prod ? prod.name : '', lines }
+    // Grava o custo calculado no produto → aparece no Catálogo (e serve de fallback)
+    if (lines.length) {
+      try {
+        await db.collection('products').doc(fichaCurrentId).update({ cost })
+        if (prod) prod.cost = cost
+        if (typeof artigosSnapshot === 'object' && artigosSnapshot[fichaCurrentId]) artigosSnapshot[fichaCurrentId].cost = cost
+        cachedUniqueItems = null
+      } catch (e2) { console.warn('Custo não gravado no produto:', e2 && e2.message) }
+    }
     renderFichaProdSelect()
     renderFichaMissingBanner()
     document.getElementById('fichaProdSelect').value = fichaCurrentId
     const delBtn = document.getElementById('fichaDeleteBtn')
     if (delBtn) delBtn.style.display = lines.length ? 'inline-block' : 'none'
     const msg = document.getElementById('fichaSavedMsg')
-    msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2500)
+    if (msg) {
+      msg.style.color = ''
+      msg.textContent = lines.length ? `✓ Salvo · Custo R$ ${cost.toFixed(2).replace('.', ',')}` : '✓ Salvo'
+      msg.style.opacity = '1'
+      setTimeout(() => { msg.style.opacity = '0'; msg.textContent = '✓ Salvo' }, 3000)
+    }
   } catch (e) { alert('Erro ao salvar ficha: ' + e.message) }
 }
 
