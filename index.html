@@ -1797,7 +1797,7 @@ document.getElementById('modalSend').addEventListener('click', () => {
 
   // Grava o pedido ANTES de abrir o WhatsApp. Com a persistência offline ativa,
   // a gravação fica registrada localmente na hora (durável) e sincroniza sozinha
-  // depois — mesmo que o cliente já tenha saltado para o WhatsApp.
+  // depois — mesmo com internet instável ou se o cliente saltar para o WhatsApp.
   const orderData = {
     items,
     total,
@@ -1805,16 +1805,21 @@ document.getElementById('modalSend').addEventListener('click', () => {
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
   }
   if (customer) orderData.customer = { phone: customer.phone || '', name: customer.name || '' }
-  db.collection('orders').add(orderData).catch(err => {
-    console.error('Firestore error:', err)
-    showOrderToast('⚠️ Tivemos um problema ao registrar seu pedido no sistema, mas ele foi aberto no WhatsApp — é só enviar a mensagem para confirmar. Desculpe o transtorno! 🙏')
-  })
+  try {
+    db.collection('orders').add(orderData).catch(err => {
+      console.error('Firestore error:', err)
+      showOrderToast('⚠️ Tivemos um problema ao registrar seu pedido no sistema, mas ele foi aberto no WhatsApp — é só enviar a mensagem para confirmar. Desculpe o transtorno! 🙏')
+    })
+  } catch (err) { console.error('Firestore error (sync):', err) }
 
-  // Abre o WhatsApp com o pedido pronto (sem aba em branco, sem espera)
+  // Abre o WhatsApp com o pedido pronto. Se o navegador bloquear a nova aba
+  // (ex.: navegadores embutidos de Instagram/Facebook), abre na mesma aba.
   let msg = '*Olá! Gostaria de fazer um pedido:*\n\n'
   items.forEach(it => { msg += `• ${it.qty}x ${it.name} — ${fmtBRL(it.qty * it.price)}\n` })
   msg += `\n*Total: ${fmtBRL(total)}*`
-  window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank')
+  const waUrl = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg)
+  const waWin = window.open(waUrl, '_blank')
+  if (!waWin) window.location.href = waUrl
 
   confirmModal.classList.remove('open')
   modalActions.style.display = ''
