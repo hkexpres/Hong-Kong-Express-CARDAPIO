@@ -850,6 +850,39 @@ input[type="number"]{-moz-appearance:textfield}
 
   <!-- CRM -->
   <div class="tab-content" id="tab-crm" style="display:none">
+    <!-- CÓDIGOS DE DESCONTO -->
+    <div class="fin-config-card" style="margin-bottom:20px">
+      <div class="fin-config-title">🎟️ Códigos de Desconto</div>
+      <div class="fin-config-sub">Crie cupons para promoções. O cliente digita o código no checkout e o desconto é aplicado antes de fechar o pedido. O controle forte é a <strong>data de validade</strong> e o <strong>ativar/desativar</strong>; a quantidade de usos é best-effort.</div>
+      <div class="art-toolbar" style="flex-wrap:wrap;gap:8px">
+        <input type="text" id="cpNewCode" class="art-inp" placeholder="CÓDIGO (ex.: HKE15DESC)" style="width:180px;text-transform:uppercase">
+        <select id="cpNewType" class="art-inp" style="width:120px">
+          <option value="percent">% desconto</option>
+          <option value="amount">R$ desconto</option>
+        </select>
+        <input type="number" id="cpNewValue" class="art-inp" placeholder="Valor" min="0" step="0.01" style="width:90px">
+        <select id="cpNewScope" class="art-inp" style="width:150px" onchange="onCouponScopeChange()">
+          <option value="order">Toda a compra</option>
+          <option value="product">Um produto</option>
+          <option value="category">Uma categoria</option>
+        </select>
+        <select id="cpNewTarget" class="art-inp" style="width:200px;display:none"></select>
+        <input type="number" id="cpNewMax" class="art-inp" placeholder="Qtd usos (0=∞)" min="0" step="1" style="width:130px" title="Máximo de usos. 0 = ilimitado">
+        <input type="date" id="cpNewUntil" class="art-inp" style="width:150px" title="Válido até (último dia, inclusive)">
+        <button class="art-btn art-btn-primary" onclick="addCoupon()">+ Criar código</button>
+      </div>
+      <div style="overflow-x:auto;margin-top:12px">
+        <table class="art-table">
+          <thead><tr>
+            <th>Código</th><th>Desconto</th><th>Aplica em</th>
+            <th style="text-align:center">Usos</th><th>Vence</th>
+            <th style="text-align:center">Status</th><th></th>
+          </tr></thead>
+          <tbody id="couponsBody"><tr><td colspan="7" style="color:#555;padding:20px;text-align:center">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <div id="crmContent"><div class="spinner">Carregando clientes…</div></div>
   </div>
 
@@ -1485,7 +1518,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none')
     document.getElementById('tab-' + tab).style.display = 'block'
     if (tab === 'dashboard') loadDashboard()   // sempre recarrega ao abrir (dados frescos)
-    if (tab === 'crm') loadCRM()
+    if (tab === 'crm') { loadCRM(); initCoupons() }
     if (tab === 'artigos') initArtigos()
     if (tab === 'insumos') initInsumos()
     if (tab === 'fichas') initFichas()
@@ -2544,6 +2577,139 @@ function renderCategoryBars(data) {
       </div>
     </div>`
   }).join('')
+}
+
+// ── CÓDIGOS DE DESCONTO (CUPONS) ──
+let couponsCache = []
+let couponProducts = []
+
+async function initCoupons() {
+  try {
+    const [cpSnap, prodSnap] = await Promise.all([
+      db.collection('coupons').get(),
+      db.collection('products').get(),
+    ])
+    couponsCache = cpSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    couponProducts = prodSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(p => p.active !== false)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    onCouponScopeChange()
+    renderCouponsList()
+  } catch (e) {
+    const body = document.getElementById('couponsBody')
+    if (body) body.innerHTML = `<tr><td colspan="7" style="color:#F44336;padding:16px;text-align:center">Erro: ${e.message}</td></tr>`
+  }
+}
+
+// Mostra/preenche o seletor de alvo conforme o alcance escolhido
+function onCouponScopeChange() {
+  const scope = document.getElementById('cpNewScope').value
+  const tgt = document.getElementById('cpNewTarget')
+  if (!tgt) return
+  if (scope === 'product') {
+    tgt.style.display = ''
+    tgt.innerHTML = couponProducts.map(p => `<option value="${p.sku || p.id}">${(p.name || '').replace(/"/g, '&quot;')}</option>`).join('')
+  } else if (scope === 'category') {
+    tgt.style.display = ''
+    tgt.innerHTML = Object.entries(CAT_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')
+  } else {
+    tgt.style.display = 'none'
+    tgt.innerHTML = ''
+  }
+}
+
+function couponDiscountLabel(c) {
+  const val = c.type === 'percent' ? `${c.value}%` : fmtBRL(c.value)
+  let onde = 'toda a compra'
+  if (c.scope === 'product') {
+    const p = couponProducts.find(x => (x.sku || x.id) === c.targetSku)
+    onde = 'produto: ' + (p ? p.name : (c.targetSku || '?'))
+  } else if (c.scope === 'category') {
+    onde = 'categoria: ' + (CAT_LABELS[c.targetCategory] || c.targetCategory)
+  }
+  return { val, onde }
+}
+
+function renderCouponsList() {
+  const body = document.getElementById('couponsBody')
+  if (!body) return
+  if (!couponsCache.length) {
+    body.innerHTML = '<tr><td colspan="7" style="color:#555;padding:20px;text-align:center">Nenhum código ainda. Crie um acima.</td></tr>'
+    return
+  }
+  const today = new Date().toISOString().split('T')[0]
+  body.innerHTML = couponsCache
+    .slice().sort((a, b) => (a.code || '').localeCompare(b.code || ''))
+    .map(c => {
+      const { val, onde } = couponDiscountLabel(c)
+      const usos = (c.maxUses && c.maxUses > 0) ? `${c.used || 0} / ${c.maxUses}` : `${c.used || 0} / ∞`
+      const vence = c.validUntil ? c.validUntil.split('-').reverse().join('/') : '—'
+      const expired = c.validUntil && c.validUntil < today
+      const exhausted = c.maxUses && c.maxUses > 0 && (c.used || 0) >= c.maxUses
+      const inactive = c.active === false || expired || exhausted
+      const statusTxt = c.active === false ? 'Inativo' : expired ? 'Vencido' : exhausted ? 'Esgotado' : 'Ativo'
+      const statusColor = inactive ? '#F44336' : 'var(--green2)'
+      const safeId = c.id.replace(/'/g, "\\'")
+      return `<tr style="${inactive ? 'opacity:.55' : ''}">
+        <td style="font-weight:700;letter-spacing:.5px">${c.code}</td>
+        <td>${val}</td>
+        <td style="color:#bbb;font-size:12px">${onde}</td>
+        <td style="text-align:center">${usos}</td>
+        <td>${vence}</td>
+        <td style="text-align:center"><button class="art-status-toggle ${c.active === false ? '' : 'active'}" onclick="toggleCouponActive('${safeId}')" title="Ativar/desativar">${statusTxt}</button></td>
+        <td><button class="art-btn art-btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteCoupon('${safeId}')">✕</button></td>
+      </tr>`
+    }).join('')
+}
+
+async function addCoupon() {
+  const codeEl = document.getElementById('cpNewCode')
+  const code = (codeEl.value || '').trim().toUpperCase().replace(/[^A-Z0-9._-]/g, '')
+  if (!code) { alert('Digite um código (só letras, números, . _ -).'); codeEl.focus(); return }
+  const type  = document.getElementById('cpNewType').value
+  const value = parseFloat(document.getElementById('cpNewValue').value)
+  if (!(value > 0)) { alert('Valor do desconto inválido.'); return }
+  if (type === 'percent' && value > 100) { alert('Percentual não pode passar de 100%.'); return }
+  const scope = document.getElementById('cpNewScope').value
+  const target = document.getElementById('cpNewTarget').value
+  if ((scope === 'product' || scope === 'category') && !target) { alert('Escolha o produto/categoria do desconto.'); return }
+  const maxUses = parseInt(document.getElementById('cpNewMax').value) || 0
+  const validUntil = document.getElementById('cpNewUntil').value || null
+  if (couponsCache.some(c => c.id === code)) { alert('Já existe um código com esse nome.'); return }
+  const data = {
+    code, type, value, scope,
+    targetSku: scope === 'product' ? target : null,
+    targetCategory: scope === 'category' ? target : null,
+    maxUses, used: 0, validUntil, active: true,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  }
+  try {
+    await db.collection('coupons').doc(code).set(data)
+    couponsCache.push({ id: code, ...data })
+    codeEl.value = ''; document.getElementById('cpNewValue').value = ''
+    document.getElementById('cpNewMax').value = ''; document.getElementById('cpNewUntil').value = ''
+    renderCouponsList()
+  } catch (e) { alert('Erro ao criar código: ' + e.message) }
+}
+
+async function toggleCouponActive(id) {
+  const c = couponsCache.find(x => x.id === id)
+  if (!c) return
+  const nowActive = c.active === false
+  try {
+    await db.collection('coupons').doc(id).update({ active: nowActive })
+    c.active = nowActive
+    renderCouponsList()
+  } catch (e) { alert('Erro: ' + e.message) }
+}
+
+async function deleteCoupon(id) {
+  if (!confirm('Eliminar o código "' + id + '"?')) return
+  try {
+    await db.collection('coupons').doc(id).delete()
+    couponsCache = couponsCache.filter(x => x.id !== id)
+    renderCouponsList()
+  } catch (e) { alert('Erro ao eliminar: ' + e.message) }
 }
 
 // ── CRM ──
