@@ -1248,13 +1248,7 @@ body.has-cart{padding-bottom:78px}
     <div class="modal-title" id="modalTitle">Deseja adicionar algo mais?</div>
     <div class="modal-sub">Confira seu pedido. Se estiver tudo certo, clique em Enviar.</div>
     <div class="modal-items" id="modalItems"></div>
-    <div style="display:flex;gap:8px;margin:10px 0 2px">
-      <input type="text" id="couponInput" placeholder="Código de desconto" autocomplete="off"
-        style="flex:1;min-width:0;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;padding:9px 12px;font-size:14px;text-transform:uppercase;outline:none">
-      <button type="button" id="couponApplyBtn" onclick="applyCoupon()"
-        style="background:rgba(255,214,0,.15);border:1px solid #F0E870;border-radius:8px;color:#F0E870;font-weight:700;padding:0 16px;cursor:pointer;font-size:13px">Aplicar</button>
-    </div>
-    <div id="couponMsg" style="font-size:12px;min-height:15px;margin:0 0 4px"></div>
+    <div id="modalCouponInfo" style="display:none;background:rgba(76,175,80,.12);border:1px solid rgba(76,175,80,.4);border-radius:8px;color:#8fd694;padding:9px 12px;font-size:13px;margin:8px 0 2px"></div>
     <div class="modal-total-row">
       <span>Total</span>
       <span id="modalTotal"></span>
@@ -1300,6 +1294,17 @@ body.has-cart{padding-bottom:78px}
   <div class="cart-body">
     <div class="cart-items" id="cartItems"></div>
     <div class="cart-summary">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" id="cartCouponInput" placeholder="Código de desconto" autocomplete="off"
+          style="flex:1;min-width:0;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;padding:9px 12px;font-size:14px;text-transform:uppercase;outline:none">
+        <button type="button" id="cartCouponBtn" onclick="applyCoupon()"
+          style="background:rgba(255,214,0,.15);border:1px solid #F0E870;border-radius:8px;color:#F0E870;font-weight:700;padding:0 16px;cursor:pointer;font-size:13px">Aplicar</button>
+      </div>
+      <div id="cartCouponMsg" style="font-size:12px;min-height:15px;margin:-2px 0 6px"></div>
+      <div id="cartDiscountRow" style="display:none;justify-content:space-between;align-items:center;font-size:13px;color:#F0C060;margin-bottom:6px">
+        <span>🎟️ <span id="cartCouponLabel"></span></span>
+        <span id="cartDiscountVal"></span>
+      </div>
       <div class="cart-total-row">
         <span class="cart-total-label">Total</span>
         <span class="cart-total-value" id="cartTotal">R$ 0,00</span>
@@ -1391,8 +1396,24 @@ function renderCart(){
   const list = document.getElementById('cartItems')
 
   document.getElementById('cartCount').textContent = totalQty
-  document.getElementById('cartBarTotal').textContent = fmtBRL(totalVal)
-  document.getElementById('cartTotal').textContent = fmtBRL(totalVal)
+  // desconto do cupom (calculado ao vivo). Se deixou de aplicar (item removido), limpa.
+  let disc = currentDiscount()
+  if (appliedCoupon && disc <= 0) {
+    appliedCoupon = null; setCouponMsg('', '')
+    const ci = document.getElementById('cartCouponInput'); if (ci) ci.value = ''
+    disc = 0
+  }
+  const netVal = Math.max(0, totalVal - disc)
+  document.getElementById('cartBarTotal').textContent = fmtBRL(netVal)
+  document.getElementById('cartTotal').textContent = fmtBRL(netVal)
+  const discRow = document.getElementById('cartDiscountRow')
+  if (discRow) {
+    if (disc > 0) {
+      discRow.style.display = 'flex'
+      document.getElementById('cartCouponLabel').textContent = appliedCoupon.code
+      document.getElementById('cartDiscountVal').textContent = '−' + fmtBRL(disc)
+    } else discRow.style.display = 'none'
+  }
 
   list.innerHTML = ''
   keys.forEach(k=>{
@@ -1744,10 +1765,15 @@ document.getElementById('cartCheckoutBtn').addEventListener('click', e => {
     row.appendChild(priceEl)
     modalItemsEl.appendChild(row)
   })
-  // reseta cupom ao (re)abrir o checkout
-  appliedCoupon = null
-  const cpInp = document.getElementById('couponInput'); if (cpInp) cpInp.value = ''
-  const cpMsg = document.getElementById('couponMsg'); if (cpMsg) cpMsg.textContent = ''
+  // mostra no checkout o cupom já aplicado no carrinho (não reseta)
+  const cInfo = document.getElementById('modalCouponInfo')
+  const disc = currentDiscount()
+  if (cInfo) {
+    if (appliedCoupon && disc > 0) {
+      cInfo.style.display = 'block'
+      cInfo.innerHTML = `🎟️ Cupom <strong>${appliedCoupon.code}</strong> aplicado · desconto de ${fmtBRL(disc)}`
+    } else cInfo.style.display = 'none'
+  }
   renderModalTotals()
 
   // CRM: returning vs new customer
@@ -1774,7 +1800,18 @@ document.getElementById('modalBack').addEventListener('click', () => {
 })
 
 // ── CUPOM DE DESCONTO ──
+// appliedCoupon guarda a REGRA; o valor do desconto é calculado ao vivo sobre o carrinho.
 let appliedCoupon = null
+
+function currentDiscount() {
+  if (!appliedCoupon) return 0
+  return computeCouponDiscount(appliedCoupon, Object.values(cart)).amount || 0
+}
+
+function setCouponMsg(text, color) {
+  const m = document.getElementById('cartCouponMsg')
+  if (m) { m.textContent = text; m.style.color = color || '#aaa' }
+}
 
 function catFromSku(sku) {
   const s = String(sku || '').toUpperCase()
@@ -1803,42 +1840,37 @@ function computeCouponDiscount(coupon, cartArr) {
 
 function renderModalTotals() {
   const subtotal = Object.values(cart).reduce((a, it) => a + it.price * it.qty, 0)
-  if (appliedCoupon && appliedCoupon.amount > 0) {
-    const net = Math.max(0, subtotal - appliedCoupon.amount)
+  const disc = currentDiscount()
+  if (disc > 0) {
+    const net = Math.max(0, subtotal - disc)
     modalTotalEl.innerHTML = `<span style="text-decoration:line-through;color:#888;font-weight:400;font-size:13px;margin-right:8px">${fmtBRL(subtotal)}</span>${fmtBRL(net)}`
   } else {
     modalTotalEl.textContent = fmtBRL(subtotal)
   }
 }
 
-function couponError(text) {
-  const m = document.getElementById('couponMsg')
-  if (m) { m.textContent = '✕ ' + text; m.style.color = '#F44336' }
-  appliedCoupon = null
-  renderModalTotals()
-}
-
 async function applyCoupon() {
-  const inp = document.getElementById('couponInput')
-  const msgEl = document.getElementById('couponMsg')
+  const inp = document.getElementById('cartCouponInput')
   const code = (inp.value || '').trim().toUpperCase()
   if (!code) { inp.focus(); return }
-  if (msgEl) { msgEl.textContent = 'Verificando…'; msgEl.style.color = '#aaa' }
+  if (Object.keys(cart).length === 0) return setCouponMsg('✕ Adicione itens ao carrinho primeiro.', '#F44336')
+  setCouponMsg('Verificando…', '#aaa')
   try {
     const doc = await db.collection('coupons').doc(code).get()
-    if (!doc.exists) return couponError('Código inválido.')
+    if (!doc.exists) return setCouponMsg('✕ Código inválido.', '#F44336')
     const c = { id: doc.id, ...doc.data() }
     const today = new Date().toISOString().split('T')[0]
-    if (c.active === false) return couponError('Este código não está mais ativo.')
-    if (c.validUntil && c.validUntil < today) return couponError('Este código venceu.')
-    if (c.maxUses && c.maxUses > 0 && (c.used || 0) >= c.maxUses) return couponError('Este código já esgotou.')
-    const { amount } = computeCouponDiscount(c, Object.values(cart))
-    if (amount <= 0) return couponError('Este código não se aplica aos itens do seu carrinho.')
-    appliedCoupon = { code: c.id, type: c.type, value: c.value, scope: c.scope,
-                      targetSku: c.targetSku || null, targetCategory: c.targetCategory || null, amount }
-    if (msgEl) { msgEl.textContent = `✓ Desconto de ${fmtBRL(amount)} aplicado!`; msgEl.style.color = '#4CAF50' }
-    renderModalTotals()
-  } catch (e) { console.error('coupon:', e); couponError('Não foi possível validar o código agora.') }
+    if (c.active === false) return setCouponMsg('✕ Este código não está mais ativo.', '#F44336')
+    if (c.validUntil && c.validUntil < today) return setCouponMsg('✕ Este código venceu.', '#F44336')
+    if (c.maxUses && c.maxUses > 0 && (c.used || 0) >= c.maxUses) return setCouponMsg('✕ Este código já esgotou.', '#F44336')
+    const rule = { code: c.id, type: c.type, value: c.value, scope: c.scope,
+                   targetSku: c.targetSku || null, targetCategory: c.targetCategory || null }
+    const { amount } = computeCouponDiscount(rule, Object.values(cart))
+    if (amount <= 0) return setCouponMsg('✕ Não se aplica aos itens do seu carrinho.', '#F44336')
+    appliedCoupon = rule
+    setCouponMsg(`✓ Cupom ${c.id} aplicado — desconto de ${fmtBRL(amount)}!`, '#4CAF50')
+    renderCart()
+  } catch (e) { console.error('coupon:', e); setCouponMsg('✕ Não foi possível validar o código agora.', '#F44336') }
 }
 
 // Aviso flutuante ao cliente (usado se o registro do pedido falhar)
@@ -1861,8 +1893,8 @@ document.getElementById('modalSend').addEventListener('click', () => {
     return { name: it.name, price: it.price, qty: it.qty, ...(it.sku ? { sku: it.sku } : {}) }
   })
   const grossTotal = items.reduce((a, it) => a + it.price * it.qty, 0)
-  const coupon = (appliedCoupon && appliedCoupon.amount > 0) ? appliedCoupon : null
-  const discount = coupon ? Math.min(coupon.amount, grossTotal) : 0
+  const discount = Math.min(currentDiscount(), grossTotal)
+  const coupon = (appliedCoupon && discount > 0) ? appliedCoupon : null
   const total = Math.max(0, grossTotal - discount)
 
   // Lê ou cria o registro do cliente (síncrono)
