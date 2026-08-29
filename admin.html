@@ -1964,6 +1964,8 @@ function renderHoje(orders, weekStart, weekEnd) {
       ? `<span class="order-cliente" style="color:#888;font-size:12px">· ${o.customer.name || o.customer.phone}</span>` : ''
     const statusClass = o.status === 'confirmed' ? 'status-confirmed' : o.status === 'cancelled' ? 'status-cancelled' : 'status-pending'
     const statusLabel = o.status === 'confirmed' ? '● CONFIRMADO' : o.status === 'cancelled' ? '● CANCELADO' : '● PENDENTE'
+    const cupomTag = (o.discount && o.discount.code)
+      ? `<div style="margin-top:3px"><span style="display:inline-block;background:rgba(240,192,96,.15);color:#F0C060;border:1px solid rgba(240,192,96,.4);border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700">🎟️ ${o.discount.code} · −${fmtBRL(o.discount.amount || 0)}</span></div>` : ''
     const editBtn = o.status !== 'cancelled'
       ? `<button class="btn-edit" onclick="openEditOrder('${o.id}')">✎ Editar</button>` : ''
     const actions = o.status === 'pending'
@@ -1981,6 +1983,7 @@ function renderHoje(orders, weekStart, weekEnd) {
           <span class="order-status ${statusClass}">${statusLabel}</span>
         </div>
         <div class="order-items">${itemsStr}</div>
+        ${cupomTag}
         ${actions}
       </div>`
   }
@@ -2265,14 +2268,19 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
     : s === 'cancelled' ? '<span style="color:#F44336;white-space:nowrap;font-size:12px">● Cancelado</span>'
     : '<span style="color:#F0E870;white-space:nowrap;font-size:12px">● Pendente</span>'
 
+  // Custo e receita LÍQUIDA por item (mesma fonte do Finanças) — reflete cupons
+  const fins = orders.map(o => calcOrderFinance(o, detalheProdBySku, detalheProdByName, detalheFichaByProdId, detalheInsumoMap))
+  const netRec = (fin, i, it) => (fin.items[i] && fin.items[i].receita != null) ? fin.items[i].receita : (it.qty * it.price)
+
   const orderRows = orders.map((o, idx) => {
+    const fin = fins[idx]
     const g = mkGroup()
-    ;(o.items || []).forEach(it => {
+    ;(o.items || []).forEach((it, i) => {
       const k = classifyItem(it.name)
       g[k].qty += it.qty
-      g[k].brl += it.qty * it.price
+      g[k].brl += netRec(fin, i, it)
     })
-    return { date: fmtDate(o.createdAt), time: fmtTime(o.createdAt), total: o.total || 0, idx, status: o.status || 'pending', ...g }
+    return { date: fmtDate(o.createdAt), time: fmtTime(o.createdAt), total: fin.receita, idx, status: o.status || 'pending', ...g }
   })
 
   // Date subtotals
@@ -2302,21 +2310,22 @@ function renderDetalhe(orders, statusCount, nonConfirmed, statusFilter) {
   // ficha → fallback custo do catálogo, via calcOrderFinance).
   const summaryMap = {}
   const prodMap = {}
-  orders.forEach(o => {
-    const fin = calcOrderFinance(o, detalheProdBySku, detalheProdByName, detalheFichaByProdId, detalheInsumoMap)
+  orders.forEach((o, oi) => {
+    const fin = fins[oi]
     ;(o.items || []).forEach((it, idx) => {
       const cst = (fin.items[idx] && fin.items[idx].custo) || 0
+      const rec = netRec(fin, idx, it)   // receita líquida (com desconto do cupom já aplicado)
       // por nome (subtotal por item)
       if (!summaryMap[it.name]) summaryMap[it.name] = { qty: 0, total: 0, cost: 0, group: classifyItem(it.name) }
       summaryMap[it.name].qty   += it.qty
-      summaryMap[it.name].total += it.qty * it.price
+      summaryMap[it.name].total += rec
       summaryMap[it.name].cost  += cst
       // por SKU (mescla variantes de nome do mesmo produto)
       const cat = categoryFromSku(it.sku) || classifyItem(it.name)
       const key = it.sku || ('_' + (it.name || '').toLowerCase().replace(/\s+/g, ' ').trim())
       if (!prodMap[key]) prodMap[key] = { sku: it.sku || null, name: it.name, qty: 0, total: 0, cost: 0, group: cat }
       prodMap[key].qty   += it.qty
-      prodMap[key].total += it.qty * it.price
+      prodMap[key].total += rec
       prodMap[key].cost  += cst
     })
   })
@@ -3135,12 +3144,30 @@ function calcOrderFinance(order, prodBySku, prodByName, fichaByProdId, insumoMap
   Object.values(insumoMap).forEach(ins => {
     if (ins.perOrder) perOrderCost += ins.costPerUnit || 0
   })
+  // Desconto do cupom: atribui aos itens a que se aplica → receita líquida POR ITEM
+  // (assim o desconto se reflete no produto em Finanças/Vendas, não como linha à parte).
+  const receitaBruta = receita
+  let desconto = 0
+  const disc = (order.discount && order.discount.amount > 0) ? order.discount : null
+  if (disc) {
+    const applies = it => disc.scope === 'product'  ? (it.sku || '') === disc.targetSku
+                        : disc.scope === 'category' ? (categoryFromSku(it.sku) === disc.targetCategory)
+                        : true
+    const base = items.filter(applies).reduce((a, it) => a + it.receita, 0)
+    desconto = Math.min(disc.amount, base > 0 ? base : receitaBruta)
+    if (base > 0) {
+      items.forEach(it => {
+        if (!applies(it)) return
+        it.receita -= desconto * (it.receita / base)
+        it.lucro    = it.receita - it.custo
+        it.margem   = it.receita > 0 ? it.lucro / it.receita * 100 : 0
+      })
+    }
+  }
+  receita = receitaBruta - desconto
   custo += perOrderCost
-  // Desconto (cupom) reduz a receita real do pedido → receita líquida
-  const desconto = (order.discount && order.discount.amount > 0) ? order.discount.amount : 0
-  const receitaLiq = Math.max(0, receita - desconto)
-  return { receita: receitaLiq, receitaBruta: receita, desconto, custo,
-           lucro: receitaLiq - custo, margem: receitaLiq > 0 ? (receitaLiq - custo) / receitaLiq * 100 : 0,
+  return { receita, receitaBruta, desconto, custo,
+           lucro: receita - custo, margem: receita > 0 ? (receita - custo) / receita * 100 : 0,
            items, perOrderCost }
 }
 
@@ -3418,7 +3445,7 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap,
         ⚠ <strong style="color:var(--white)">Menor margem:</strong> ${piorMarg.name} <span style="color:var(--gray)">· ${(piorMarg.receita > 0 ? (piorMarg.receita - piorMarg.custo) / piorMarg.receita * 100 : 0).toFixed(0)}% de margem · ${piorMarg.qty} un</span></div>` : ''}
     </div>` : ''}
 
-    <div class="fin-section-title">Rentabilidade por Categoria</div>
+    <div class="fin-section-title">Rentabilidade por Categoria${totDesconto > 0 ? ` <span style="font-weight:400;color:#F0C060;font-size:12px;text-transform:none;letter-spacing:0">· 🎟️ ${nDesconto} pedido${nDesconto>1?'s':''} com cupom — ${fmtBRL(totDesconto)} em descontos (já refletido nos valores)</span>` : ''}</div>
     <div style="overflow-x:auto"><table class="fin-cat-table">
       <thead><tr>
         <th>Categoria</th><th style="text-align:right">Un.</th>
@@ -3432,14 +3459,6 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap,
           <td></td><td></td>
           <td style="color:#aaa">${fmtBRL(totEmbalagem)}</td>
           <td style="color:#F44336">−${fmtBRL(totEmbalagem)}</td>
-          <td></td><td></td>
-        </tr>` : ''}
-        ${totDesconto > 0 ? `<tr title="Descontos de cupons aplicados — reduzem a receita, não pertencem a uma categoria">
-          <td style="color:#bbb;font-weight:400">🎟️ Descontos (cupons) <span style="color:#888;font-size:11px">(${nDesconto} pedido${nDesconto>1?'s':''})</span></td>
-          <td></td>
-          <td style="color:#F44336">−${fmtBRL(totDesconto)}</td>
-          <td></td>
-          <td style="color:#F44336">−${fmtBRL(totDesconto)}</td>
           <td></td><td></td>
         </tr>` : ''}
         <tr><td>TOTAL</td><td></td>
@@ -5666,10 +5685,7 @@ function openFinModal(orderId) {
 
   if (row.fin.desconto > 0) {
     html += `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
-      <td style="padding:7px 6px;color:#F0C060;font-size:12px">🎟️ Cupom ${row.discount && row.discount.code ? row.discount.code : ''}</td>
-      <td style="text-align:center;padding:7px 4px;color:#888">—</td>
-      <td style="text-align:right;padding:7px 4px;color:#F44336">−${fmtBRL(row.fin.desconto)}</td>
-      <td colspan="3"></td>
+      <td colspan="6" style="padding:7px 6px;color:#F0C060;font-size:12px">🎟️ Cupom ${row.discount && row.discount.code ? row.discount.code : ''} — desconto de ${fmtBRL(row.fin.desconto)} (já refletido nos itens acima)</td>
     </tr>`
   }
 
