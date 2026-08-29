@@ -3136,7 +3136,12 @@ function calcOrderFinance(order, prodBySku, prodByName, fichaByProdId, insumoMap
     if (ins.perOrder) perOrderCost += ins.costPerUnit || 0
   })
   custo += perOrderCost
-  return { receita, custo, lucro: receita - custo, margem: receita > 0 ? (receita - custo) / receita * 100 : 0, items, perOrderCost }
+  // Desconto (cupom) reduz a receita real do pedido → receita líquida
+  const desconto = (order.discount && order.discount.amount > 0) ? order.discount.amount : 0
+  const receitaLiq = Math.max(0, receita - desconto)
+  return { receita: receitaLiq, receitaBruta: receita, desconto, custo,
+           lucro: receitaLiq - custo, margem: receitaLiq > 0 ? (receitaLiq - custo) / receitaLiq * 100 : 0,
+           items, perOrderCost }
 }
 
 function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap, prev) {
@@ -3155,10 +3160,13 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap,
   if (Object.keys(_noMatch).length) console.warn('[Finanças] Itens sem match no catálogo (nome exato → sku):', _noMatch)
   window._finRows = Object.fromEntries(rows.map(r => [r.id, r]))
 
-  const totReceita = rows.reduce((a, r) => a + r.fin.receita, 0)
+  const totReceita = rows.reduce((a, r) => a + r.fin.receita, 0)   // já líquida (menos descontos)
   const totCusto   = rows.reduce((a, r) => a + r.fin.custo, 0)
   const totLucro   = totReceita - totCusto
   const totMargem  = totReceita > 0 ? totLucro / totReceita * 100 : 0
+  // Descontos (cupons): reduzem a receita, não pertencem a nenhuma categoria
+  const totDesconto = rows.reduce((a, r) => a + (r.fin.desconto || 0), 0)
+  const nDesconto   = rows.filter(r => (r.fin.desconto || 0) > 0).length
   // Embalagem por pedido (saco de papel): custo 1×/pedido que não pertence a nenhuma categoria
   const totEmbalagem = rows.reduce((a, r) => a + (r.fin.perOrderCost || 0), 0)
   const nEmbalagem   = rows.filter(r => (r.fin.perOrderCost || 0) > 0).length
@@ -3424,6 +3432,14 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap,
           <td></td><td></td>
           <td style="color:#aaa">${fmtBRL(totEmbalagem)}</td>
           <td style="color:#F44336">−${fmtBRL(totEmbalagem)}</td>
+          <td></td><td></td>
+        </tr>` : ''}
+        ${totDesconto > 0 ? `<tr title="Descontos de cupons aplicados — reduzem a receita, não pertencem a uma categoria">
+          <td style="color:#bbb;font-weight:400">🎟️ Descontos (cupons) <span style="color:#888;font-size:11px">(${nDesconto} pedido${nDesconto>1?'s':''})</span></td>
+          <td></td>
+          <td style="color:#F44336">−${fmtBRL(totDesconto)}</td>
+          <td></td>
+          <td style="color:#F44336">−${fmtBRL(totDesconto)}</td>
           <td></td><td></td>
         </tr>` : ''}
         <tr><td>TOTAL</td><td></td>
@@ -5645,6 +5661,15 @@ function openFinModal(orderId) {
       <td style="text-align:right;padding:7px 4px;color:#666">—</td>
       <td style="text-align:right;padding:7px 4px;color:#aaa">${fmtBRL(row.fin.perOrderCost)}</td>
       <td colspan="2"></td>
+    </tr>`
+  }
+
+  if (row.fin.desconto > 0) {
+    html += `<tr style="border-bottom:1px solid rgba(255,255,255,.05)">
+      <td style="padding:7px 6px;color:#F0C060;font-size:12px">🎟️ Cupom ${row.discount && row.discount.code ? row.discount.code : ''}</td>
+      <td style="text-align:center;padding:7px 4px;color:#888">—</td>
+      <td style="text-align:right;padding:7px 4px;color:#F44336">−${fmtBRL(row.fin.desconto)}</td>
+      <td colspan="3"></td>
     </tr>`
   }
 
