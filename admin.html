@@ -2659,14 +2659,18 @@ function renderCouponsList() {
       const statusTxt = c.active === false ? 'Inativo' : expired ? 'Vencido' : exhausted ? 'Esgotado' : 'Ativo'
       const statusColor = inactive ? '#F44336' : 'var(--green2)'
       const safeId = c.id.replace(/'/g, "\\'")
+      const inpStyle = 'background:#1e1e1e;border:1px solid #333;border-radius:6px;color:#fff;padding:4px 6px;font-size:12px'
       return `<tr style="${inactive ? 'opacity:.55' : ''}">
         <td style="font-weight:700;letter-spacing:.5px">${c.code}</td>
         <td>${val}</td>
         <td style="color:#bbb;font-size:12px">${onde}</td>
-        <td style="text-align:center">${usos}</td>
-        <td>${vence}</td>
+        <td style="text-align:center;white-space:nowrap">${c.used || 0} / <input type="number" min="0" value="${c.maxUses || 0}" title="Máx. usos (0 = ∞)" onchange="updateCouponField('${safeId}','maxUses',this.value)" style="width:48px;text-align:center;${inpStyle}"></td>
+        <td><input type="date" value="${c.validUntil || ''}" title="Válido até" onchange="updateCouponField('${safeId}','validUntil',this.value)" style="${inpStyle}"></td>
         <td style="text-align:center"><button class="art-status-toggle ${c.active === false ? '' : 'active'}" onclick="toggleCouponActive('${safeId}')" title="Ativar/desativar">${statusTxt}</button></td>
-        <td><button class="art-btn art-btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteCoupon('${safeId}')">✕</button></td>
+        <td style="white-space:nowrap">
+          <button class="art-btn" style="padding:5px 8px;font-size:12px;background:rgba(125,179,255,.12);border:1px solid #7DB3FF;color:#cfe3ff;margin-right:4px" onclick="resetCoupon('${safeId}')" title="Zerar usos e reativar (mantém o mesmo código)">♻</button>
+          <button class="art-btn art-btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteCoupon('${safeId}')">✕</button>
+        </td>
       </tr>`
     }).join('')
 }
@@ -2699,6 +2703,32 @@ async function addCoupon() {
     document.getElementById('cpNewMax').value = ''; document.getElementById('cpNewUntil').value = ''
     renderCouponsList()
   } catch (e) { alert('Erro ao criar código: ' + e.message) }
+}
+
+// Edita um campo do cupom inline (validade, máx. usos) e salva na hora
+async function updateCouponField(id, field, value) {
+  const c = couponsCache.find(x => x.id === id)
+  if (!c) return
+  let v = value
+  if (field === 'maxUses') v = parseInt(value) || 0
+  if (field === 'validUntil') v = value || null
+  try {
+    await db.collection('coupons').doc(id).update({ [field]: v })
+    c[field] = v
+    renderCouponsList()
+  } catch (e) { alert('Erro ao salvar: ' + e.message) }
+}
+
+// Reinicia o cupom mantendo o mesmo código: zera os usos e reativa
+async function resetCoupon(id) {
+  const c = couponsCache.find(x => x.id === id)
+  if (!c) return
+  if (!confirm(`Reiniciar o cupom "${id}"?\n\n• Zera os usos (${c.used || 0} → 0)\n• Reativa o código\n\nA validade você ajusta na coluna "Vence". Assim reusa o mesmo nome.`)) return
+  try {
+    await db.collection('coupons').doc(id).update({ used: 0, active: true })
+    c.used = 0; c.active = true
+    renderCouponsList()
+  } catch (e) { alert('Erro ao reiniciar: ' + e.message) }
 }
 
 async function toggleCouponActive(id) {
