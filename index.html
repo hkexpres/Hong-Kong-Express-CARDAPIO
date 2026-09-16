@@ -1544,12 +1544,13 @@ async function syncPricesFromFirestore() {
   // e esta função preenche os valores reais ao carregar. Sem fallback no HTML,
   // então tentamos 1 vez e, se falhar, repetimos uma vez após 1,5s.
     const snap = await db.collection('products').get()
-    const byName = {}, bySku = {}, nameBySku = {}, inactive = new Set()
+    const byName = {}, bySku = {}, nameBySku = {}, componentsBySku = {}, inactive = new Set()
     snap.docs.forEach(d => {
       const p = d.data()
       if (!p.name || p.price == null) return
       const sku = p.sku || d.id   // doc id = SKU quando o produto não tem campo sku
       if (sku) nameBySku[sku] = p.name
+      if (sku && p.components) componentsBySku[sku] = p.components
       if (p.active === false) { if (sku) inactive.add(sku); return }
       byName[p.name] = p.price
       if (sku) bySku[sku] = p.price
@@ -1590,6 +1591,19 @@ async function syncPricesFromFirestore() {
       const sku = card.dataset.sku
       if (sku && inactive.has(sku)) { markInactive(card, '.combo-price'); return }
       apply(card.querySelector('.combo-price'), resolve(sku, nameEl.textContent.trim()))
+      // "Economize X%" calculado: preço do combo vs soma dos componentes (não hardcoded)
+      const savingEl = card.querySelector('.combo-saving')
+      const comboPrice = bySku[sku]
+      const comps = componentsBySku[sku]
+      if (savingEl && comboPrice != null && comps) {
+        const soma = String(comps).split('+').reduce((a, cs) => a + (bySku[cs.trim()] || 0), 0)
+        if (soma > 0 && comboPrice < soma) {
+          savingEl.textContent = `✔ Economize ${Math.round((1 - comboPrice / soma) * 100)}%`
+          savingEl.style.display = ''
+        } else {
+          savingEl.style.display = 'none'   // sem economia real → esconde a pílula
+        }
+      }
     })
 
     // 3) Gyozas: gprice with data-sku
