@@ -3711,6 +3711,9 @@ async function toggleArtigoActive(id) {
     await db.collection('products').doc(id).update({ active: nowActive })
     if (artigosSnapshot[id]) artigosSnapshot[id].active = nowActive
     pruneIfClean(artigosBuffer, artigosSnapshot, id)   // status já persistido: não deixa buffer "sujo"
+    // Se o produto é componente de combos: pausa os combos ao pausar; reativa se todos os componentes voltarem
+    const sku = (artigosSnapshot[id] && artigosSnapshot[id].sku) || id
+    await cascadeCombosForComponent(sku, nowActive)
     const msg = document.getElementById('artSavedMsg')
     if (msg) { msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0' }, 2000) }
   } catch (e) {
@@ -3718,6 +3721,47 @@ async function toggleArtigoActive(id) {
     renderArtTable()
     alert('Erro ao atualizar status: ' + e.message)
   }
+}
+
+// Pausa (ou reativa) combos que contêm um componente. Ao pausar o componente,
+// pausa todo combo que o inclui. Ao reativá-lo, reativa o combo só se TODOS os
+// seus componentes estiverem ativos.
+async function cascadeCombosForComponent(sku, nowActive) {
+  if (!sku) return
+  const bySku = {}
+  Object.values(artigosSnapshot).forEach(p => { if (p.sku) bySku[p.sku] = p; if (p.id) bySku[p.id] = p })
+  const isActive   = s => { const p = bySku[s]; return !p || p.active !== false }   // ausente → não bloqueia
+  const parseComps = c => String(c || '').split('+').map(x => x.trim()).filter(Boolean)
+  const changes = []
+  Object.values(artigosSnapshot).forEach(p => {
+    if (p.category !== 'combos' || !p.components) return
+    const comps = parseComps(p.components)
+    if (!comps.includes(sku)) return
+    if (!nowActive) {
+      if (p.active !== false) changes.push({ id: p.id, active: false })            // pausa o combo
+    } else if (p.active === false && comps.every(isActive)) {
+      changes.push({ id: p.id, active: true })                                      // reativa se tudo voltou
+    }
+  })
+  if (!changes.length) return
+  try {
+    const batch = db.batch()
+    changes.forEach(ch => {
+      batch.update(db.collection('products').doc(ch.id), { active: ch.active })
+      if (artigosSnapshot[ch.id]) artigosSnapshot[ch.id].active = ch.active
+      delete artigosBuffer[ch.id]
+    })
+    await batch.commit()
+    cachedUniqueItems = null
+    renderArtTable()
+    const nomes = changes.map(ch => (artigosSnapshot[ch.id] && artigosSnapshot[ch.id].name) || ch.id)
+    const msg = document.getElementById('artSavedMsg')
+    if (msg) {
+      msg.textContent = `✓ Combo(s) ${nowActive ? 'reativado(s)' : 'pausado(s)'}: ${nomes.join(', ')}`
+      msg.style.opacity = '1'
+      setTimeout(() => { msg.style.opacity = '0'; msg.textContent = '✓ Salvo' }, 4000)
+    }
+  } catch (e) { console.warn('cascade combos:', e && e.message) }
 }
 
 async function deleteArtigo(id) {
@@ -4667,7 +4711,7 @@ async function loadFichasData() {
   ])
   fichaProducts = prodSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(p => ['pratos', 'acomp'].includes(p.category) && p.active !== false)
+    .filter(p => ['pratos', 'acomp'].includes(p.category))   // inclui pausados (ficha segue disponível)
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
   fichaInsumos = insSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
@@ -4748,7 +4792,7 @@ function renderFichaProdSelect() {
   sel.innerHTML = placeholder +
     list.map(p => {
       const has = fichaMap[p.id] && (fichaMap[p.id].lines || []).length
-      return `<option value="${p.id}">${has ? '✓ ' : '○ '}${(p.name || '').replace(/"/g, '&quot;')}</option>`
+      return `<option value="${p.id}">${has ? '✓ ' : '○ '}${(p.name || '').replace(/"/g, '&quot;')}${p.active === false ? ' — pausado' : ''}</option>`
     }).join('')
 }
 
@@ -4783,7 +4827,7 @@ function renderFichaSuggest(q) {
     return `<div class="ficha-suggest-item${i === fichaSuggestIdx ? ' active' : ''}" data-idx="${i}"
       onmousedown="event.preventDefault()" onclick="pickFichaSuggest(${i})">
       <span>${has ? '✓' : '○'}</span>
-      <span>${(p.name || '').replace(/</g, '&lt;')}</span>
+      <span>${(p.name || '').replace(/</g, '&lt;')}${p.active === false ? ' <span style="color:#F0C060;font-size:10px">· pausado</span>' : ''}</span>
       <span class="fs-sku">${p.sku || ''}</span>
     </div>`
   }).join('')
