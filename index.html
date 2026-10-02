@@ -1479,7 +1479,11 @@ function injectButtons(){
       const protein = labelEl.textContent.trim()
       const price = parsePrice(priceEl.textContent)
       if(!price) return
-      const fullName = dishName + ' · ' + protein
+      // Para "Misto", inclui as proteínas (do subtítulo) no nome → aparece no WhatsApp/pedido
+      const cutEl = chip.querySelector('.pchip-cut')
+      const cut = cutEl ? cutEl.textContent.trim() : ''
+      let fullName = dishName + ' · ' + protein
+      if (/misto/i.test(protein) && cut) fullName += ' (' + cut + ')'
       chip.appendChild(makeAddBtn(fullName, price, chip.dataset.sku || null))
     })
   })
