@@ -1933,6 +1933,7 @@ document.getElementById('modalSend').addEventListener('click', () => {
     items,
     total,
     status: 'pending',
+    source: 'cardapio',
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
   }
   if (customer) orderData.customer = { phone: customer.phone || '', name: customer.name || '' }
