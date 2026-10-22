@@ -1494,7 +1494,10 @@ function injectButtons(){
     const priceEl = card.querySelector('.combo-price')
     const footer = card.querySelector('.combo-footer')
     if(!nameEl || !priceEl || !footer) return
-    const name = nameEl.textContent.trim()
+    const comps = nameEl.textContent.trim()                 // detalhe dos pratos
+    const badgeEl = card.querySelector('.combo-badge')
+    const badge = badgeEl ? badgeEl.textContent.trim() : '' // nome do combo (ex.: COMBO DRAGÃO 🐉)
+    const name = badge ? `${badge} (${comps})` : comps      // informa que é combo + nome + detalhe
     const price = parsePrice(priceEl.textContent)
     if(!price) return
     footer.appendChild(makeAddBtn(name, price, card.dataset.sku || null))
