@@ -3118,6 +3118,7 @@ function _finSummary(orders, prodBySku, prodByName, fichaByProdId, insumoMap, cu
     lucroLiquido: lucro - custosFixos,
     ticket: n ? receita / n : 0,
     lucroPorPrato: qtyPratos ? (prR - prC) / qtyPratos : 0,
+    precoMedioPrato: qtyPratos ? prR / qtyPratos : 0,
     margem: receita ? lucro / receita * 100 : 0
   }
 }
@@ -3490,21 +3491,26 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap,
     </div>
 
     <div class="fin-section-title" style="margin-top:8px">Drivers do negócio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· o que explica o resultado</span></div>
-    <div class="fin-kpi-row fin-kpi-row-prato">
+    <div class="fin-kpi-row fin-kpi-row-prato" style="grid-template-columns:repeat(auto-fit,minmax(155px,1fr))">
       <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
         <div class="fin-kpi-label">Pratos vendidos</div>
         <div class="fin-kpi-val yellow">${qtyPratos}${finDelta(qtyPratos, prev && prev.qtyPratos)}</div>
         <div class="fin-kpi-sub">${pratosPorPedido.toFixed(2)} pratos/pedido</div>
       </div>
-      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
-        <div class="fin-kpi-label">Ticket médio</div>
-        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(ticketMedio)}${finDelta(ticketMedio, prev && prev.ticket)}</div>
-        <div class="fin-kpi-sub">${fmtBRL(lucroPorPedido)} de lucro/pedido</div>
+      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)" title="Receita de pratos à la carte ÷ nº de pratos. Combos ficam fora (preço bundled distorce). É o preço base para projeções.">
+        <div class="fin-kpi-label">Preço médio por prato</div>
+        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(precoMedioPrato)}${finDelta(precoMedioPrato, prev && prev.precoMedioPrato)}</div>
+        <div class="fin-kpi-sub">à la carte · combos à parte</div>
       </div>
       <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)" title="Lucro só de pratos ÷ nº de pratos vendidos. Margem do prato ponderada sobre a receita de pratos.">
         <div class="fin-kpi-label">Lucro médio por prato</div>
         <div class="fin-kpi-val ${lucroPorPrato>=0?'green':'red'}">${fmtBRL(lucroPorPrato)}${finDelta(lucroPorPrato, prev && prev.lucroPorPrato)}</div>
         <div class="fin-kpi-sub">margem do prato ${margemPrato.toFixed(1)}%</div>
+      </div>
+      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
+        <div class="fin-kpi-label">Ticket médio</div>
+        <div class="fin-kpi-val" style="color:var(--white)">${fmtBRL(ticketMedio)}${finDelta(ticketMedio, prev && prev.ticket)}</div>
+        <div class="fin-kpi-sub">${fmtBRL(lucroPorPedido)} de lucro/pedido</div>
       </div>
       <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)" title="Receita ÷ dias com venda no período (delivery pode não abrir todo dia).">
         <div class="fin-kpi-label">Receita por dia</div>
