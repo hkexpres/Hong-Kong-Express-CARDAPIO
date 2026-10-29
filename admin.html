@@ -3104,17 +3104,30 @@ function isoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Nº de pratos dentro de um item de combo (só componentes categoria 'pratos', × qtd)
+function comboPratosDoItem(it, prodBySku) {
+  if (!it || it.cat !== 'combos' || !it.sku) return 0
+  const combo = prodBySku[it.sku]
+  if (!combo || !combo.components) return 0
+  const n = String(combo.components).split('+').map(s => s.trim())
+    .filter(cs => categoryFromSku(cs) === 'pratos').length
+  return n * (it.qty || 0)
+}
+
 // Resumo financeiro de um conjunto de pedidos (para o período anterior / comparação)
 function _finSummary(orders, prodBySku, prodByName, fichaByProdId, insumoMap, custosFixos) {
-  let receita = 0, custo = 0, prR = 0, prC = 0, qtyPratos = 0
+  let receita = 0, custo = 0, prR = 0, prC = 0, qtyPratos = 0, qtyPratosCombo = 0
   ;(orders || []).forEach(o => {
     const fin = calcOrderFinance(o, prodBySku, prodByName, fichaByProdId, insumoMap)
     receita += fin.receita; custo += fin.custo
-    fin.items.forEach(it => { if (it.cat === 'pratos') { prR += it.receita; prC += it.custo; qtyPratos += it.qty } })
+    fin.items.forEach(it => {
+      if (it.cat === 'pratos') { prR += it.receita; prC += it.custo; qtyPratos += it.qty }
+      qtyPratosCombo += comboPratosDoItem(it, prodBySku)
+    })
   })
   const lucro = receita - custo, n = (orders || []).length
   return {
-    receita, custo, lucro, nPedidos: n, qtyPratos, custosFixos,
+    receita, custo, lucro, nPedidos: n, qtyPratos, qtyPratosCombo, qtyPratosTotal: qtyPratos + qtyPratosCombo, custosFixos,
     lucroLiquido: lucro - custosFixos,
     ticket: n ? receita / n : 0,
     lucroPorPrato: qtyPratos ? (prR - prC) / qtyPratos : 0,
@@ -3318,12 +3331,16 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap,
   const nPedidos    = rows.length
   const pr          = catData['pratos'] || { qty: 0, receita: 0, custo: 0 }
   const lucroPratos = pr.receita - pr.custo
-  const qtyPratos   = pr.qty
+  const qtyPratos   = pr.qty                                   // pratos à la carte (preço/lucro limpos)
+  // Pratos vindos de combos (só os componentes que são pratos) → volume real produzido
+  let qtyPratosCombo = 0
+  rows.forEach(r => r.fin.items.forEach(it => { qtyPratosCombo += comboPratosDoItem(it, prodBySku) }))
+  const qtyPratosTotal = qtyPratos + qtyPratosCombo
   const lucroPorPrato  = qtyPratos  > 0 ? lucroPratos / qtyPratos      : 0   // R$ médio que cada prato deixa
   const margemPrato    = pr.receita > 0 ? lucroPratos / pr.receita * 100 : 0  // ponderada (não média simples)
   const ticketMedio    = nPedidos   > 0 ? totReceita / nPedidos        : 0
   const lucroPorPedido = nPedidos   > 0 ? totLucro   / nPedidos        : 0
-  const pratosPorPedido= nPedidos   > 0 ? qtyPratos  / nPedidos        : 0
+  const pratosPorPedido= nPedidos   > 0 ? qtyPratosTotal / nPedidos    : 0
 
   // ── Ponto de equilíbrio (só quando há custos fixos cadastrados) ──
   // Custos fixos são mensais → rateia pelos meses do período (2 meses = 2× o custo fixo).
@@ -3492,10 +3509,10 @@ function renderFinancas(orders, prodBySku, prodByName, fichaByProdId, insumoMap,
 
     <div class="fin-section-title" style="margin-top:8px">Drivers do negócio <span style="text-transform:none;letter-spacing:0;color:var(--gray2);font-weight:400">· o que explica o resultado</span></div>
     <div class="fin-kpi-row fin-kpi-row-prato" style="grid-template-columns:repeat(auto-fit,minmax(155px,1fr))">
-      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)">
+      <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)" title="Total de pratos produzidos = à la carte + os pratos que vêm dentro dos combos (gyozas/bebidas não contam).">
         <div class="fin-kpi-label">Pratos vendidos</div>
-        <div class="fin-kpi-val yellow">${qtyPratos}${finDelta(qtyPratos, prev && prev.qtyPratos)}</div>
-        <div class="fin-kpi-sub">${pratosPorPedido.toFixed(2)} pratos/pedido</div>
+        <div class="fin-kpi-val yellow">${qtyPratosTotal}${finDelta(qtyPratosTotal, prev && prev.qtyPratosTotal)}</div>
+        <div class="fin-kpi-sub">${qtyPratos} à la carte${qtyPratosCombo > 0 ? ` + ${qtyPratosCombo} em combos` : ''} · ${pratosPorPedido.toFixed(2)}/pedido</div>
       </div>
       <div class="fin-kpi" style="border-color:rgba(240,232,112,0.25)" title="Receita de pratos à la carte ÷ nº de pratos. Combos ficam fora (preço bundled distorce). É o preço base para projeções.">
         <div class="fin-kpi-label">Preço médio por prato</div>
