@@ -2979,6 +2979,31 @@ function exportExcel() {
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Pedidos')
 
+  // ── Aba 2: Itens (identifica o SKU de cada item de cada pedido) ──
+  const itRows = [['Data', 'Hora', 'SKU', 'Item', 'Categoria', 'Qtd', 'Preço un. R$', 'Subtotal R$']]
+  detalheOrders.forEach(o => {
+    const date = fmtDate(o.createdAt), time = fmtTime(o.createdAt)
+    ;(o.items || []).forEach(it => {
+      const cat = CAT_LABELS[categoryFromSku(it.sku) || classifyItem(it.name)] || ''
+      itRows.push([date, time, it.sku || '—', it.name, cat, it.qty, it.price || 0, (it.qty || 0) * (it.price || 0)])
+    })
+  })
+  const wsItens = XLSX.utils.aoa_to_sheet(itRows)
+  wsItens['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 36 }, { wch: 12 }, { wch: 6 }, { wch: 12 }, { wch: 12 }]
+  XLSX.utils.book_append_sheet(wb, wsItens, 'Itens')
+
+  // ── Aba 3: Ranking de Pratos (por unidades, com %) — mescla variantes por SKU ──
+  const pratos = (detalheProdData || []).filter(d => d.group === 'pratos').slice().sort((a, b) => b.qty - a.qty)
+  const totUn  = pratos.reduce((a, d) => a + d.qty, 0) || 1
+  const totFat = pratos.reduce((a, d) => a + d.total, 0)
+  const rkRows = [['#', 'SKU', 'Prato', 'Unidades', '% unidades', 'Faturamento R$']]
+  pratos.forEach((d, i) => rkRows.push([i + 1, d.sku || '—', d.name, d.qty, d.qty / totUn, d.total]))
+  rkRows.push(['', '', 'TOTAL', totUn, 1, totFat])
+  const wsRank = XLSX.utils.aoa_to_sheet(rkRows)
+  wsRank['!cols'] = [{ wch: 5 }, { wch: 10 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 15 }]
+  for (let r = 1; r < rkRows.length; r++) { const c = wsRank['E' + (r + 1)]; if (c) c.z = '0.0%' }  // coluna % formatada
+  XLSX.utils.book_append_sheet(wb, wsRank, 'Ranking Pratos')
+
   const from = document.getElementById('filterFrom').value
   const to   = document.getElementById('filterTo').value
   XLSX.writeFile(wb, `HKE_pedidos_${from}_${to}.xlsx`)
