@@ -961,6 +961,18 @@ input[type="number"]{-moz-appearance:textfield}
         <span class="fin-saved-msg" id="artSavedMsg">✓ Salvo</span>
       </div>
     </div>
+
+    <!-- ATUALIZAÇÃO DE PREÇOS EM LOTE -->
+    <div class="fin-config-card" style="margin-top:20px">
+      <div class="fin-config-title">💲 Atualizar preços em lote</div>
+      <div class="fin-config-sub">Cole <strong>2 colunas: SKU e preço novo</strong> (uma por linha — copiado do Excel vem separado por tab). Clique <strong>Prever</strong> para revisar e só então <strong>Aplicar</strong>. Atualiza só o preço dos produtos encontrados por SKU; o resto é avisado.</div>
+      <textarea id="bulkPriceInput" rows="6" placeholder="CF-FRG&#9;45&#10;KP-FRG&#9;57&#10;B-GUA&#9;8" style="width:100%;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;padding:10px 12px;font-size:13px;font-family:monospace;outline:none;resize:vertical"></textarea>
+      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <button class="art-btn" style="background:rgba(125,179,255,.15);border:1px solid #7DB3FF;color:#cfe3ff" onclick="previewBulkPrices()">👁 Prever</button>
+        <button class="art-btn art-btn-primary" id="bulkApplyBtn" onclick="applyBulkPrices()" style="display:none">✓ Aplicar</button>
+      </div>
+      <div id="bulkPricePreview" style="margin-top:12px"></div>
+    </div>
   </div>
 
   <!-- INSUMOS -->
@@ -3937,6 +3949,71 @@ async function addArtigoRow() {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '+ Criar' }
   }
+}
+
+// ── ATUALIZAÇÃO DE PREÇOS EM LOTE ──
+let bulkPriceMatches = []
+
+function parsePriceToken(t) {
+  if (t == null) return null
+  const m = String(t).replace(/\s/g, '').replace(/r\$/i, '').match(/-?[\d.,]+/)
+  if (!m) return null
+  let s = m[0]
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.')   // formato BR: 1.234,50
+  const v = parseFloat(s)
+  return isNaN(v) ? null : v
+}
+
+function parseBulkLines(text) {
+  const out = [], seen = new Set()
+  String(text || '').split(/\r?\n/).forEach(line => {
+    const raw = line.trim(); if (!raw) return
+    const parts = (raw.includes('\t') ? raw.split('\t') : raw.split(/\s+/)).map(s => s.trim()).filter(Boolean)
+    if (parts.length < 2) return
+    const sku = parts[0].toUpperCase().replace(/[^A-Z0-9._-]/g, '')
+    const price = parsePriceToken(parts[parts.length - 1])
+    if (sku && price != null && price > 0 && !seen.has(sku)) { seen.add(sku); out.push({ sku, price }) }
+  })
+  return out
+}
+
+function previewBulkPrices() {
+  const parsed = parseBulkLines(document.getElementById('bulkPriceInput').value)
+  const prev = document.getElementById('bulkPricePreview')
+  const applyBtn = document.getElementById('bulkApplyBtn')
+  bulkPriceMatches = []
+  if (!parsed.length) { prev.innerHTML = '<div style="color:#F44336;font-size:13px">Nada para prever. Cole SKU + preço (2 colunas).</div>'; applyBtn.style.display = 'none'; return }
+  const bySku = {}
+  Object.values(artigosSnapshot).forEach(p => { if (p.sku) bySku[p.sku] = p; if (p.id) bySku[p.id] = p })
+  const rows = parsed.map(x => {
+    const p = bySku[x.sku]
+    if (!p) return `<tr><td style="font-weight:700">${x.sku}</td><td style="color:#888">—</td><td style="text-align:right">—</td><td style="text-align:right">${fmtBRL(x.price)}</td><td style="color:#F44336">não encontrado</td></tr>`
+    const atual = p.price || 0
+    const muda = Math.abs(atual - x.price) > 0.001
+    bulkPriceMatches.push({ id: p.id, price: x.price })
+    return `<tr><td style="font-weight:700">${x.sku}</td><td>${p.name || ''}</td><td style="text-align:right;color:#aaa">${fmtBRL(atual)}</td><td style="text-align:right;color:#F0E870;font-weight:600">${fmtBRL(x.price)}</td><td style="color:${muda ? 'var(--green2)' : '#888'}">${muda ? '→ muda' : 'igual'}</td></tr>`
+  }).join('')
+  const nFound = bulkPriceMatches.length, nNot = parsed.length - nFound
+  prev.innerHTML = `<div style="font-size:12px;color:var(--gray);margin-bottom:6px"><strong style="color:var(--green2)">${nFound}</strong> encontrado(s)${nNot ? ` · <strong style="color:#F44336">${nNot}</strong> não encontrado(s)` : ''}</div>
+    <div style="overflow-x:auto"><table class="art-table"><thead><tr><th>SKU</th><th>Produto</th><th style="text-align:right">Atual</th><th style="text-align:right">Novo</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`
+  applyBtn.style.display = nFound ? 'inline-block' : 'none'
+}
+
+async function applyBulkPrices() {
+  if (!bulkPriceMatches.length) return
+  if (!confirm(`Aplicar ${bulkPriceMatches.length} preço(s)?\n\nGrava no catálogo e reflete no cardápio na hora. Os não encontrados ficam de fora.`)) return
+  const btn = document.getElementById('bulkApplyBtn'); btn.disabled = true; btn.textContent = 'Aplicando…'
+  try {
+    const batch = db.batch()
+    bulkPriceMatches.forEach(m => { batch.update(db.collection('products').doc(m.id), { price: m.price }); if (artigosSnapshot[m.id]) artigosSnapshot[m.id].price = m.price })
+    await batch.commit()
+    cachedUniqueItems = null
+    renderArtTable()
+    document.getElementById('bulkPricePreview').innerHTML = `<div style="color:var(--green2);font-size:13px">✓ ${bulkPriceMatches.length} preço(s) atualizado(s) no catálogo!</div>`
+    document.getElementById('bulkPriceInput').value = ''
+    bulkPriceMatches = []
+  } catch (e) { alert('Erro ao aplicar preços: ' + e.message) }
+  finally { btn.disabled = false; btn.textContent = '✓ Aplicar' }
 }
 
 async function initArtigos() {
