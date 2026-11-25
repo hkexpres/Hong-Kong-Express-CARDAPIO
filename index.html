@@ -139,6 +139,15 @@ body{background:var(--negro);color:var(--blanco);font-family:'Inter',sans-serif;
   font-family:'Inter',sans-serif;font-weight:600;font-size:13px;color:#F0E870;
 }
 .plate-salsa .dot{color:var(--rojo);font-size:9px}
+.plate-share{
+  display:inline-flex;align-items:center;gap:6px;
+  margin-left:10px;margin-bottom:9px;
+  padding:3px 10px;border-radius:20px;
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+  font-family:'Inter',sans-serif;font-weight:600;font-size:11px;color:#C0C0C0;
+  letter-spacing:0.02em;
+}
+.plate-share svg{color:#F0E870;flex-shrink:0;display:block}
 
 .protein-row{display:flex;gap:6px;padding-left:10px;flex-wrap:wrap}
 .pchip{
@@ -899,7 +908,7 @@ body.has-cart{padding-bottom:78px}
         <span class="bs-rank">#1</span>
         <div class="bs-info">
           <div class="bs-name">Chow Fan Frango 🥢</div>
-          <div class="bs-detail">Arroz frito no wok · 180g de proteína</div>
+          <div class="bs-detail">Arroz frito no wok · 165g de proteína</div>
         </div>
       </div>
       <span class="bs-price">R$ --</span>
@@ -909,7 +918,7 @@ body.has-cart{padding-bottom:78px}
         <span class="bs-rank">#2</span>
         <div class="bs-info">
           <div class="bs-name">Agripicante Misto 🌶️</div>
-          <div class="bs-detail">Macarrão wok · 250g de proteína</div>
+          <div class="bs-detail">Macarrão wok · 240g de proteína</div>
         </div>
       </div>
       <span class="bs-price">R$ --</span>
@@ -919,7 +928,7 @@ body.has-cart{padding-bottom:78px}
         <span class="bs-rank">#3</span>
         <div class="bs-info">
           <div class="bs-name">Chow Mein Carne 🥢</div>
-          <div class="bs-detail">Macarrão no wok · 180g de proteína</div>
+          <div class="bs-detail">Macarrão no wok · 165g de proteína</div>
         </div>
       </div>
       <span class="bs-price">R$ --</span>
@@ -937,7 +946,7 @@ body.has-cart{padding-bottom:78px}
     <div class="ab ab-red"></div>
     <div class="plate-header">
       <span class="plate-name">CHOW FAN 🔥</span>
-      <span class="ptag ptag-red">180g de proteína</span>
+      <span class="ptag ptag-red">165g de proteína</span>
     </div>
     <p class="plate-copy">Arroz frito no wok com ovo, cenoura, cebola branca, repolho roxo e cebolinha 🥢</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho HKE · 20ml</div>
@@ -954,7 +963,7 @@ body.has-cart{padding-bottom:78px}
     <div class="ab ab-red"></div>
     <div class="plate-header">
       <span class="plate-name">CHOW MEIN 🥢</span>
-      <span class="ptag ptag-red">180g de proteína</span>
+      <span class="ptag ptag-red">165g de proteína</span>
     </div>
     <p class="plate-copy">Macarrão de sêmola salteado no wok com cenoura, cebola, pimentão verde e repolho roxo 🥢</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho HKE · 60ml</div>
@@ -1008,7 +1017,7 @@ body.has-cart{padding-bottom:78px}
     <div class="ab ab-brn"></div>
     <div class="plate-header">
       <span class="plate-name">CARNE TERIYAKI&nbsp;<span style="white-space:nowrap">🥩🍄</span></span>
-      <span class="ptag ptag-brn">250g de proteína</span>
+      <span class="ptag ptag-brn">240g de proteína</span>
     </div>
     <p class="plate-copy">Carne no wok em fogo alto com cogumelo shiitake, cebola e cebolinha. Equilíbrio perfeito entre doce, salgado e umami intenso. Topping de gergelim bicolor. Acompanha arroz branco tostado no wok.</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho Teriyaki HKE · 60ml</div>
@@ -1021,7 +1030,7 @@ body.has-cart{padding-bottom:78px}
     <div class="ab ab-red"></div>
     <div class="plate-header">
       <span class="plate-name">AGRIPICANTE&nbsp;<span style="white-space:nowrap">🌶️🔥</span></span>
-      <span class="ptag ptag-brn">250g de proteína</span>
+      <span class="ptag ptag-brn">240g de proteína</span>
     </div>
     <p class="plate-copy">Doce + picante + wok em fogo alto. Pimentão vermelho, cebola e nosso molho secreto. Topping de gergelim bicolor. Acompanha macarrão de sêmola salteado no wok.</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho Agripicante HKE · 60ml</div>
@@ -1036,7 +1045,7 @@ body.has-cart{padding-bottom:78px}
     <div class="ab ab-red"></div>
     <div class="plate-header">
       <span class="plate-name">KUNG PAO&nbsp;<span style="white-space:nowrap">🌶️🔥🥜</span></span>
-      <span class="ptag ptag-brn">250g de proteína</span>
+      <span class="ptag ptag-brn">240g de proteína</span>
     </div>
     <p class="plate-copy">Salgado, levemente picante, com o aroma tostado da pimenta seca frita no wok. Pimentões e cebola salteados em fogo alto, fechamento agridoce que realça o tempero. Crocância do amendoim, finalizado com cebolinha fresca. Acompanha arroz branco tostado no wok.</p>
     <div class="plate-salsa"><span class="dot">◆</span> Molho Kung Pao HKE · 70ml</div>
@@ -1057,6 +1066,32 @@ body.has-cart{padding-bottom:78px}
     <div class="plate-salsa"><span class="dot">◆</span> Molho Umami HKE · 65ml</div>
     <div class="protein-row">
       <div class="pchip" data-sku="FRG-SKT" style="background:#8B4513"><span class="pchip-label">Frango</span><span class="pchip-cut">filé + shiitake</span><span class="pchip-price">R$ --</span></div>
+    </div>
+  </div>
+
+  <div class="plate-card">
+    <div class="ab ab-red"></div>
+    <div class="plate-header">
+      <span class="plate-name">CAMARÃO CANTONÊS&nbsp;<span style="white-space:nowrap">🦐🔥</span></span>
+      <span class="ptag ptag-brn">140g de camarão</span>
+    </div>
+    <p class="plate-copy">Camarão no wok em fogo alto com gengibre e alho, cebolinha, cebola e pimentão vermelho. Clássico cantonês: aromático, leve e cheio de umami. Topping de gergelim bicolor. Acompanha macarrão de sêmola salteado no wok.</p>
+    <div class="plate-salsa"><span class="dot">◆</span> Molho da Casa HKE · 60ml</div>
+    <div class="protein-row">
+      <div class="pchip" data-sku="CMN-CTS" style="background:#D84315"><span class="pchip-label">Camarão</span><span class="pchip-cut">140g</span><span class="pchip-price">R$ --</span></div>
+    </div>
+  </div>
+
+  <div class="plate-card">
+    <div class="ab ab-red"></div>
+    <div class="plate-header">
+      <span class="plate-name">CAMARÃO CHOW FAN&nbsp;<span style="white-space:nowrap">🦐🍚</span></span>
+      <span class="ptag ptag-brn">140g de camarão</span>
+    </div>
+    <p class="plate-copy">Arroz frito no wok em fogo alto com camarão, ovo, cenoura, cebola, repolho roxo e cebolinha. Salgado com o toque do mar e o sabor tostado do wok. Topping de gergelim bicolor.</p>
+    <div class="plate-salsa"><span class="dot">◆</span> Molho da Casa HKE · 60ml</div>
+    <div class="protein-row">
+      <div class="pchip" data-sku="CF-CMN" style="background:#D84315"><span class="pchip-label">Camarão</span><span class="pchip-cut">140g</span><span class="pchip-price">R$ --</span></div>
     </div>
   </div>
 </div>
@@ -1091,7 +1126,7 @@ body.has-cart{padding-bottom:78px}
   <div class="combo-card" data-sku="CMB-DRG">
     <div class="combo-badge">COMBO DRAGÃO 🐉</div>
     <div class="combo-name">Chow Fan Frango + Agripicante Misto + Gyoza x5</div>
-    <div class="combo-items">🥢 Arroz frito · 180g de proteína<br>🌶️ Macarrão agridoce-picante · 250g de proteína<br>🥟 5 gyozas crocantes</div>
+    <div class="combo-items">🥢 Arroz frito · 165g de proteína<br>🌶️ Macarrão agridoce-picante · 240g de proteína<br>🥟 5 gyozas crocantes</div>
     <div class="combo-footer">
       <span class="combo-saving" style="display:none">✔ Economize</span>
       <span class="combo-price">R$ --</span>
@@ -1101,7 +1136,7 @@ body.has-cart{padding-bottom:78px}
   <div class="combo-card" data-sku="CMB-PRM">
     <div class="combo-badge">COMBO PREMIUM ⭐</div>
     <div class="combo-name">Carne Teriyaki + Gyoza x8</div>
-    <div class="combo-items">🥩 Carne com shiitake · 250g de proteína + arroz tostado no wok<br>🥟 8 gyozas crocantes com molhos incluídos</div>
+    <div class="combo-items">🥩 Carne com shiitake · 240g de proteína + arroz tostado no wok<br>🥟 8 gyozas crocantes com molhos incluídos</div>
     <div class="combo-footer">
       <span class="combo-saving" style="display:none">✔ Economize</span>
       <span class="combo-price">R$ --</span>
@@ -1111,7 +1146,7 @@ body.has-cart{padding-bottom:78px}
   <div class="combo-card" data-sku="CMB-DUO">
     <div class="combo-badge">COMBO DUO 🥢</div>
     <div class="combo-name">Chow Fan Suíno + Chow Mein Frango</div>
-    <div class="combo-items">🍚 Arroz frito · 180g de proteína<br>🍜 Macarrão no wok · 180g de proteína</div>
+    <div class="combo-items">🍚 Arroz frito · 165g de proteína<br>🍜 Macarrão no wok · 165g de proteína</div>
     <div class="combo-footer">
       <span class="combo-saving" style="display:none">✔ Economize</span>
       <span class="combo-price">R$ --</span>
@@ -1121,7 +1156,7 @@ body.has-cart{padding-bottom:78px}
   <div class="combo-card" data-sku="CMB-VRD">
     <div class="combo-badge">COMBO VERDE + FOGO 🌶️</div>
     <div class="combo-name">Kung Pao Frango + Chop Suey</div>
-    <div class="combo-items">🔥 Kung Pao levemente picante · 250g de proteína + arroz<br>🥦 Chop Suey vegetariano</div>
+    <div class="combo-items">🔥 Kung Pao levemente picante · 240g de proteína + arroz<br>🥦 Chop Suey vegetariano</div>
     <div class="combo-footer">
       <span class="combo-saving" style="display:none">✔ Economize</span>
       <span class="combo-price">R$ --</span>
@@ -1131,7 +1166,7 @@ body.has-cart{padding-bottom:78px}
   <div class="combo-card" data-sku="CMB-HK">
     <div class="combo-badge">COMBO HONG KONG 🏆</div>
     <div class="combo-name">Kung Pao Frango + Carne Teriyaki + Chow Fan Suíno</div>
-    <div class="combo-items">🔥 Kung Pao · 250g de proteína<br>🥩 Teriyaki com shiitake · 250g de proteína<br>🍚 Arroz frito · 180g de proteína</div>
+    <div class="combo-items">🔥 Kung Pao · 240g de proteína<br>🥩 Teriyaki com shiitake · 240g de proteína<br>🍚 Arroz frito · 165g de proteína</div>
     <div class="combo-footer">
       <span class="combo-saving" style="display:none">✔ Economize</span>
       <span class="combo-price">R$ --</span>
@@ -1479,6 +1514,14 @@ function injectButtons(){
   document.querySelectorAll('.plate-card').forEach(card=>{
     const dishEl = card.querySelector('.plate-name')
     if(!dishEl) return
+    // Badge "Serve até 2" (compartir) — una vez por tarjeta
+    const header = card.querySelector('.plate-header')
+    if(header && !card.querySelector('.plate-share')){
+      const share = document.createElement('div')
+      share.className = 'plate-share'
+      share.innerHTML = '<svg width="22" height="14" viewBox="0 0 30 20" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="3.4"/><path d="M3.3 19 a5.7 5 0 0 1 11.4 0 z"/><circle cx="21" cy="6" r="3.4"/><path d="M15.3 19 a5.7 5 0 0 1 11.4 0 z"/></svg><span>Serve até 2 · ideal pra compartilhar</span>'
+      header.insertAdjacentElement('afterend', share)
+    }
     const dishName = dishEl.textContent.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu,'').trim()
     card.querySelectorAll('.pchip').forEach(chip=>{
       const labelEl = chip.querySelector('.pchip-label')
