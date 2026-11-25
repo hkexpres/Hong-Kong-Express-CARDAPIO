@@ -973,6 +973,17 @@ input[type="number"]{-moz-appearance:textfield}
       </div>
       <div id="bulkPricePreview" style="margin-top:12px"></div>
     </div>
+
+    <!-- CARGA / ATUALIZAÇÃO DE COMBOS -->
+    <div class="fin-config-card" style="margin-top:20px">
+      <div class="fin-config-title">🎁 Combos do cardápio (criar / atualizar)</div>
+      <div class="fin-config-sub">Cria ou atualiza no catálogo os <strong>5 combos do cardápio</strong> (preço + componentes), para que apareçam com preço e calculem o "Economize %". Lê o catálogo ao vivo: cria os que faltam e atualiza os existentes. Clique <strong>Prever</strong> e depois <strong>Aplicar</strong>.</div>
+      <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+        <button class="art-btn" style="background:rgba(125,179,255,.15);border:1px solid #7DB3FF;color:#cfe3ff" onclick="previewCombos()">👁 Prever</button>
+        <button class="art-btn art-btn-primary" id="comboApplyBtn" onclick="applyCombos()" style="display:none">✓ Aplicar</button>
+      </div>
+      <div id="comboPreview" style="margin-top:12px"></div>
+    </div>
   </div>
 
   <!-- INSUMOS -->
@@ -4013,6 +4024,66 @@ async function applyBulkPrices() {
     document.getElementById('bulkPriceInput').value = ''
     bulkPriceMatches = []
   } catch (e) { alert('Erro ao aplicar preços: ' + e.message) }
+  finally { btn.disabled = false; btn.textContent = '✓ Aplicar' }
+}
+
+// ── CARGA / ATUALIZAÇÃO DE COMBOS DO CARDÁPIO ──
+// Lineup do ERP v34 (WhatsApp). Preço = PREÇO_VENDA_DESCUENTO; cost = CUSTO_RS.
+const COMBO_SEED = [
+  { sku: 'CMB-PRM',   name: 'Combo PREMIUM',   price: 92,  cost: 40.02, components: 'TRY-CRN + GYZ-8' },
+  { sku: 'CMB-DUO',   name: 'Combo DÚO',       price: 96,  cost: 29.98, components: 'CF-PRC + CM-FRG + 3x GYZ-1' },
+  { sku: 'CMB-CASAL', name: 'Combo CASAL',     price: 108, cost: 33.43, components: 'CF-FRG + KP-FRG + 4x GYZ-1' },
+  { sku: 'CMB-DRG',   name: 'Combo DRAGÃO',    price: 112, cost: 36.77, components: 'CF-FRG + AGP-MST2 + 5x GYZ-1' },
+  { sku: 'CMB-HKE',   name: 'Combo HONG KONG', price: 140, cost: 49.05, components: 'KP-FRG + TRY-CRN + CF-PRC' },
+]
+let comboPlan = []
+
+async function previewCombos() {
+  const prev = document.getElementById('comboPreview')
+  const applyBtn = document.getElementById('comboApplyBtn')
+  prev.innerHTML = '<div style="color:#888;font-size:13px">Lendo catálogo…</div>'
+  let snap
+  try { snap = await db.collection('products').get() }
+  catch (e) { prev.innerHTML = `<div style="color:#F44336;font-size:13px">Erro ao ler catálogo: ${e.message}</div>`; return }
+  const bySku = {}
+  snap.docs.forEach(d => { const p = { id: d.id, ...d.data() }; if (p.sku) bySku[p.sku] = p; bySku[d.id] = p })
+  comboPlan = COMBO_SEED.map(c => {
+    const ex = bySku[c.sku] || null
+    return { ...c, existingId: ex ? ex.id : null, existingPrice: ex ? ex.price : null, action: ex ? 'atualizar' : 'criar' }
+  })
+  const rows = comboPlan.map(c => {
+    const atual = c.existingPrice != null ? fmtBRL(c.existingPrice) : '—'
+    const col = c.action === 'criar' ? 'var(--green2)' : '#F0E870'
+    const lbl = c.action === 'criar' ? '＋ criar' : '→ atualizar'
+    return `<tr><td style="font-weight:700">${c.sku}</td><td>${c.name}</td><td style="color:#aaa;font-size:11px">${c.components}</td><td style="text-align:right;color:#aaa">${atual}</td><td style="text-align:right;color:#F0E870;font-weight:600">${fmtBRL(c.price)}</td><td style="color:${col}">${lbl}</td></tr>`
+  }).join('')
+  const nCreate = comboPlan.filter(c => c.action === 'criar').length
+  const nUpd = comboPlan.length - nCreate
+  prev.innerHTML = `<div style="font-size:12px;color:var(--gray);margin-bottom:6px"><strong style="color:var(--green2)">${nCreate}</strong> a criar · <strong style="color:#F0E870">${nUpd}</strong> a atualizar</div>
+    <div style="overflow-x:auto"><table class="art-table"><thead><tr><th>SKU</th><th>Nome</th><th>Componentes</th><th style="text-align:right">Atual</th><th style="text-align:right">Novo</th><th>Ação</th></tr></thead><tbody>${rows}</tbody></table></div>`
+  applyBtn.style.display = comboPlan.length ? 'inline-block' : 'none'
+}
+
+async function applyCombos() {
+  if (!comboPlan.length) { alert('Clique Prever primeiro.'); return }
+  if (!confirm(`Gravar ${comboPlan.length} combo(s) no catálogo?\n\nCria os novos e atualiza preço/componentes dos existentes. Reflete no cardápio na hora.`)) return
+  const btn = document.getElementById('comboApplyBtn'); btn.disabled = true; btn.textContent = 'Gravando…'
+  try {
+    const batch = db.batch()
+    comboPlan.forEach(c => {
+      const family = deriveFamily(c.sku, c.name)
+      const fields = { name: c.name, category: 'combos', sku: c.sku, price: c.price, cost: c.cost, active: true, components: c.components, ...(family ? { family } : {}) }
+      const ref = c.existingId ? db.collection('products').doc(c.existingId) : db.collection('products').doc()
+      if (c.existingId) batch.set(ref, fields, { merge: true })
+      else batch.set(ref, { ...fields, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+      artigosSnapshot[ref.id] = { ...(artigosSnapshot[ref.id] || {}), id: ref.id, ...fields }
+    })
+    await batch.commit()
+    cachedUniqueItems = null
+    renderArtTable()
+    document.getElementById('comboPreview').innerHTML = `<div style="color:var(--green2);font-size:13px">✓ ${comboPlan.length} combo(s) gravado(s) no catálogo!</div>`
+    comboPlan = []
+  } catch (e) { alert('Erro ao gravar combos: ' + e.message) }
   finally { btn.disabled = false; btn.textContent = '✓ Aplicar' }
 }
 

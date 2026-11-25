@@ -1121,16 +1121,6 @@ body.has-cart{padding-bottom:78px}
     <div class="ln"></div><h2>🎁 Combos</h2><div class="ln r"></div>
   </div>
 
-  <div class="combo-card" data-sku="CMB-SOLO">
-    <div class="combo-badge">COMBO SOLO 🥢</div>
-    <div class="combo-name">Chow Mein Frango + 2 Gyoza + Molho Teriyaki</div>
-    <div class="combo-items">🍜 Macarrão no wok · 165g de proteína<br>🥟 2 gyozas crocantes<br>🥢 Molho Teriyaki incluído</div>
-    <div class="combo-footer">
-      <span class="combo-saving" style="display:none">✔ Economize</span>
-      <span class="combo-price">R$ --</span>
-    </div>
-  </div>
-
   <div class="combo-card" data-sku="CMB-PRM">
     <div class="combo-badge">COMBO PREMIUM ⭐</div>
     <div class="combo-name">Carne Teriyaki + Gyoza x8</div>
@@ -1145,26 +1135,6 @@ body.has-cart{padding-bottom:78px}
     <div class="combo-badge">COMBO DÚO 🥢</div>
     <div class="combo-name">Chow Fan Suíno + Chow Mein Frango + 3 Gyoza</div>
     <div class="combo-items">🍚 Arroz frito · 165g de proteína<br>🍜 Macarrão no wok · 165g de proteína<br>🥟 3 gyozas crocantes</div>
-    <div class="combo-footer">
-      <span class="combo-saving" style="display:none">✔ Economize</span>
-      <span class="combo-price">R$ --</span>
-    </div>
-  </div>
-
-  <div class="combo-card" data-sku="CMB-MIX">
-    <div class="combo-badge">COMBO MIX 🌶️</div>
-    <div class="combo-name">Kung Pao Frango + Chop Suey + 2 Guaraná</div>
-    <div class="combo-items">🔥 Kung Pao levemente picante · 240g de proteína + arroz<br>🥦 Chop Suey vegetariano (macarrão)<br>🥤 2 Guaraná Antártica</div>
-    <div class="combo-footer">
-      <span class="combo-saving" style="display:none">✔ Economize</span>
-      <span class="combo-price">R$ --</span>
-    </div>
-  </div>
-
-  <div class="combo-card" data-sku="CMB-VEG">
-    <div class="combo-badge">COMBO VEGGIE 🌱</div>
-    <div class="combo-name">Shiitake Agridoce + Chop Suey + 3 Gyoza + Guaraná</div>
-    <div class="combo-items">🍄 Shiitake agridoce · arroz tostado no wok<br>🥦 Chop Suey vegetariano (macarrão)<br>🥟 3 gyozas de vegetais<br>🥤 Guaraná Antártica</div>
     <div class="combo-footer">
       <span class="combo-saving" style="display:none">✔ Economize</span>
       <span class="combo-price">R$ --</span>
@@ -1682,7 +1652,13 @@ async function syncPricesFromFirestore() {
       const comboPrice = bySku[sku]
       const comps = componentsBySku[sku]
       if (savingEl && comboPrice != null && comps) {
-        const soma = String(comps).split('+').reduce((a, cs) => a + (bySku[cs.trim()] || 0), 0)
+        const soma = String(comps).split('+').reduce((a, cs) => {
+          const t = cs.trim()
+          const mm = t.match(/^(\d+)\s*x\s*(.+)$/i)   // "5x GYZ-1" → 5 × preço(GYZ-1)
+          const qty = mm ? parseInt(mm[1], 10) : 1
+          const sk = mm ? mm[2].trim() : t
+          return a + qty * (bySku[sk] || 0)
+        }, 0)
         if (soma > 0 && comboPrice < soma) {
           savingEl.textContent = `✔ Economize ${Math.round((1 - comboPrice / soma) * 100)}%`
           savingEl.style.display = ''
