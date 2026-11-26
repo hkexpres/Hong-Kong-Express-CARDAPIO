@@ -4030,11 +4030,11 @@ async function applyBulkPrices() {
 // ── CARGA / ATUALIZAÇÃO DE COMBOS DO CARDÁPIO ──
 // Lineup do ERP v34 (WhatsApp). Preço = PREÇO_VENDA_DESCUENTO; cost = CUSTO_RS.
 const COMBO_SEED = [
-  { sku: 'CMB-PRM',   name: 'Combo PREMIUM',   price: 92,  cost: 40.02, components: 'TRY-CRN + GYZ-8' },
-  { sku: 'CMB-DUO',   name: 'Combo DÚO',       price: 96,  cost: 29.98, components: 'CF-PRC + CM-FRG + 3x GYZ-1' },
-  { sku: 'CMB-CASAL', name: 'Combo CASAL',     price: 108, cost: 33.43, components: 'CF-FRG + KP-FRG + 4x GYZ-1' },
-  { sku: 'CMB-DRG',   name: 'Combo DRAGÃO',    price: 112, cost: 36.77, components: 'CF-FRG + AGP-MST + 5x GYZ-1' },
-  { sku: 'CMB-HKE',   name: 'Combo HONG KONG', price: 140, cost: 49.05, components: 'KP-FRG + TRY-CRN + CF-PRC' },
+  { sku: 'CMB-PRM',   name: 'Combo PREMIUM',   price: 92,  lista: 107,   cost: 40.02, components: 'TRY-CRN + GYZ-8' },
+  { sku: 'CMB-DUO',   name: 'Combo DÚO',       price: 96,  lista: 115.5, cost: 29.98, components: 'CF-PRC + CM-FRG + 3x GYZ-1' },
+  { sku: 'CMB-CASAL', name: 'Combo CASAL',     price: 108, lista: 128,   cost: 33.43, components: 'CF-FRG + KP-FRG + 4x GYZ-1' },
+  { sku: 'CMB-DRG',   name: 'Combo DRAGÃO',    price: 112, lista: 132,   cost: 36.77, components: 'CF-FRG + AGP-MST + 5x GYZ-1' },
+  { sku: 'CMB-HKE',   name: 'Combo HONG KONG', price: 140, lista: 171,   cost: 49.05, components: 'KP-FRG + TRY-CRN + CF-PRC' },
 ]
 let comboPlan = []
 
@@ -4072,7 +4072,7 @@ async function applyCombos() {
     const batch = db.batch()
     comboPlan.forEach(c => {
       const family = deriveFamily(c.sku, c.name)
-      const fields = { name: c.name, category: 'combos', sku: c.sku, price: c.price, cost: c.cost, active: true, components: c.components, ...(family ? { family } : {}) }
+      const fields = { name: c.name, category: 'combos', sku: c.sku, price: c.price, listPrice: c.lista, cost: c.cost, active: true, components: c.components, ...(family ? { family } : {}) }
       const ref = c.existingId ? db.collection('products').doc(c.existingId) : db.collection('products').doc()
       if (c.existingId) batch.set(ref, fields, { merge: true })
       else batch.set(ref, { ...fields, createdAt: firebase.firestore.FieldValue.serverTimestamp() })

@@ -849,7 +849,7 @@ body.has-cart{padding-bottom:78px}
       <div class="hero-card-content">
         <div class="hero-card-num">05 / DESTAQUE DA CASA</div>
         <div class="hero-card-name">TERIYAKI <span>CARNE</span></div>
-        <div class="hero-card-desc">Carne no wok com shiitake e cebola em molho teriyaki · arroz branco</div>
+        <div class="hero-card-desc">Carne no wok com shiitake e cebola em molho teriyaki · arroz branco tostado no wok</div>
         <div class="hero-card-tag">Carne · Umami intenso</div>
       </div>
     </div>
@@ -885,7 +885,7 @@ body.has-cart{padding-bottom:78px}
       <div class="hero-card-content">
         <div class="hero-card-num">07 / DESTAQUE DA CASA</div>
         <div class="hero-card-name">KUNG <span>PAO</span></div>
-        <div class="hero-card-desc">Salgado + levemente picante + crocante do amendoim · arroz branco</div>
+        <div class="hero-card-desc">Salgado + levemente picante + crocante do amendoim · arroz branco tostado no wok</div>
         <div class="hero-card-tag">Frango · Carne</div>
       </div>
     </div>
@@ -947,7 +947,7 @@ body.has-cart{padding-bottom:78px}
       <span class="ptag ptag-red">165g de proteína</span>
     </div>
     <p class="plate-copy">Arroz frito no wok com ovo, cenoura, cebola branca, repolho roxo e cebolinha 🥢</p>
-    <div class="plate-salsa"><span class="dot">◆</span> Molho HKE · 20ml</div>
+    <div class="plate-salsa"><span class="dot">◆</span> Molho HKE · 30ml</div>
     <div class="protein-row">
       <div class="pchip" data-sku="CF-FRG"><span class="pchip-label">Frango</span><span class="pchip-cut">filé</span><span class="pchip-price">R$ --</span></div>
       <div class="pchip" data-sku="CF-PRC"><span class="pchip-label">Suíno</span><span class="pchip-cut">lombo</span><span class="pchip-price">R$ --</span></div>
@@ -1600,13 +1600,14 @@ async function syncPricesFromFirestore() {
   // e esta função preenche os valores reais ao carregar. Sem fallback no HTML,
   // então tentamos 1 vez e, se falhar, repetimos uma vez após 1,5s.
     const snap = await db.collection('products').get()
-    const byName = {}, bySku = {}, nameBySku = {}, componentsBySku = {}, inactive = new Set()
+    const byName = {}, bySku = {}, nameBySku = {}, componentsBySku = {}, listPriceBySku = {}, inactive = new Set()
     snap.docs.forEach(d => {
       const p = d.data()
       if (!p.name || p.price == null) return
       const sku = p.sku || d.id   // doc id = SKU quando o produto não tem campo sku
       if (sku) nameBySku[sku] = p.name
       if (sku && p.components) componentsBySku[sku] = p.components
+      if (sku && p.listPrice != null) listPriceBySku[sku] = p.listPrice
       if (p.active === false) { if (sku) inactive.add(sku); return }
       byName[p.name] = p.price
       if (sku) bySku[sku] = p.price
@@ -1650,20 +1651,24 @@ async function syncPricesFromFirestore() {
       // "Economize X%" calculado: preço do combo vs soma dos componentes (não hardcoded)
       const savingEl = card.querySelector('.combo-saving')
       const comboPrice = bySku[sku]
-      const comps = componentsBySku[sku]
-      if (savingEl && comboPrice != null && comps) {
-        const soma = String(comps).split('+').reduce((a, cs) => {
+      // Referência à la carte: listPrice do catálogo (robusto) ou, se faltar, soma dos componentes
+      let lista = listPriceBySku[sku]
+      if (lista == null) {
+        const comps = componentsBySku[sku]
+        if (comps) lista = String(comps).split('+').reduce((a, cs) => {
           const t = cs.trim()
           const mm = t.match(/^(\d+)\s*x\s*(.+)$/i)   // "5x GYZ-1" → 5 × preço(GYZ-1)
           const qty = mm ? parseInt(mm[1], 10) : 1
           const sk = mm ? mm[2].trim() : t
           return a + qty * (bySku[sk] || 0)
         }, 0)
-        if (soma > 0 && comboPrice < soma) {
-          savingEl.textContent = `✔ Economize ${Math.round((1 - comboPrice / soma) * 100)}%`
+      }
+      if (savingEl) {
+        if (comboPrice != null && lista && comboPrice < lista) {
+          savingEl.textContent = `✔ Economize ${Math.round((1 - comboPrice / lista) * 100)}%`
           savingEl.style.display = ''
         } else {
-          savingEl.style.display = 'none'   // sem economia real → esconde a pílula
+          savingEl.style.display = 'none'   // sem economia → esconde a pílula
         }
       }
     })
