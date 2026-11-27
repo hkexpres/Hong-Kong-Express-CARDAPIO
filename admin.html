@@ -1704,6 +1704,25 @@ function comboPlateCount(sku) {
     .filter(cs => categoryFromSku(cs) === 'pratos').length
 }
 
+// Nome canônico de prato por SKU → ranking consistente (mesma grafia venha de onde vier:
+// cardápio, iFood ou dentro de combo). Variantes Misto são unificadas por prato.
+const PLATE_NAMES = {
+  'CF-FRG':'CHOW FAN · Frango','CF-PRC':'CHOW FAN · Suíno','CF-CRN':'CHOW FAN · Carne',
+  'CF-MST':'CHOW FAN · Misto','CF-MST1':'CHOW FAN · Misto','CF-MST2':'CHOW FAN · Misto','CF-CMN':'CAMARÃO CHOW FAN',
+  'CM-FRG':'CHOW MEIN · Frango','CM-PRC':'CHOW MEIN · Suíno','CM-CRN':'CHOW MEIN · Carne',
+  'CM-MST':'CHOW MEIN · Misto','CM-MST1':'CHOW MEIN · Misto','CM-MST2':'CHOW MEIN · Misto',
+  'AGP-FRG':'AGRIPICANTE · Frango','AGP-PRC':'AGRIPICANTE · Suíno','AGP-MST':'AGRIPICANTE · Misto','AGP-MST2':'AGRIPICANTE · Misto',
+  'KP-FRG':'KUNG PAO · Frango','KP-PRC':'KUNG PAO · Suíno','KP-MST':'KUNG PAO · Misto','KP-MST2':'KUNG PAO · Misto',
+  'TRY-CRN':'CARNE TERIYAKI',
+  'CS-ARZ':'CHOP SUEY · Arroz','CS-SEM':'CHOP SUEY · Macarrão',
+  'SK-ARZ':'SHIITAKE AGRIDOCE · Arroz','SK-SEM':'SHIITAKE AGRIDOCE · Macarrão',
+  'FRG-SKT':'FRANGO SHIITAKE','CMN-CTS':'CAMARÃO CANTONÊS',
+}
+function canonicalPlateName(sku, fallback) {
+  const k = String(sku || '').toUpperCase()
+  return PLATE_NAMES[k] || fallback || k
+}
+
 function calcGroups(orders) {
   const groups = {}
   let totalPlatos = 0   // todos os produtos (countPorcoes)
@@ -2603,20 +2622,22 @@ function toggleSumDetail(i) {
 // Dados do donut de pratos: pratos à la carte + os pratos que vêm dentro dos combos vendidos.
 // Cada combo soma 1 unidade de cada prato componente (qtd do combo), sem mexer no faturamento.
 function pratosComCombos() {
-  const map = {}
-  ;(detalheProdData || []).filter(d => d.group === 'pratos').forEach(d => {
-    const k = String(d.sku || d.name).toUpperCase()
-    map[k] = { name: d.name, qty: d.qty, total: d.total, cost: d.cost }
-  })
+  const map = {}   // chave = nome canônico → unifica grafias e variantes Misto
+  const add = (sku, fallbackName, qty, total, cost) => {
+    const name = canonicalPlateName(sku, fallbackName)
+    if (!map[name]) map[name] = { name, qty: 0, total: 0, cost: 0 }
+    map[name].qty   += qty || 0
+    map[name].total += total || 0
+    map[name].cost  += cost || 0
+  }
+  ;(detalheProdData || []).filter(d => d.group === 'pratos').forEach(d => add(d.sku, d.name, d.qty, d.total, d.cost))
   ;(detalheProdData || []).filter(d => d.group === 'combos' && d.sku).forEach(d => {
     const combo = prodCatalogBySku[String(d.sku).toUpperCase()]
     if (!combo || !combo.components) return
     String(combo.components).split('+').map(s => s.trim()).forEach(cs => {
       if (categoryFromSku(cs) !== 'pratos') return
-      const k = cs.toUpperCase()
-      const comp = prodCatalogBySku[k]
-      if (!map[k]) map[k] = { name: (comp && comp.name) ? comp.name : cs, qty: 0, total: 0, cost: 0 }
-      map[k].qty += d.qty
+      const comp = prodCatalogBySku[cs.toUpperCase()]
+      add(cs, (comp && comp.name) ? comp.name : cs, d.qty, 0, 0)   // só soma unidades, não fatura
     })
   })
   return Object.values(map)
