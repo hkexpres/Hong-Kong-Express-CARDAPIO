@@ -1695,6 +1695,15 @@ function countPorcoes(items) {
   }, 0)
 }
 
+// Nº de componentes-prato (categoria 'pratos') dentro de um combo, pelo catálogo vivo.
+// Mesmo critério do Finanças (comboPratosDoItem): gyozas/bebidas não contam.
+function comboPlateCount(sku) {
+  const p = sku ? prodCatalogBySku[String(sku).toUpperCase()] : null
+  if (!p || !p.components) return 0
+  return String(p.components).split('+').map(s => s.trim())
+    .filter(cs => categoryFromSku(cs) === 'pratos').length
+}
+
 function calcGroups(orders) {
   const groups = {}
   let totalPlatos = 0   // todos os produtos (countPorcoes)
@@ -1707,7 +1716,9 @@ function calcGroups(orders) {
       groups[g].qty   += it.qty
       groups[g].total += it.qty * it.price
       totalBRL        += it.qty * it.price
-      if ((categoryFromSku(it.sku) || classifyItem(it.name)) === 'pratos') totalPratos += it.qty
+      const _cat = categoryFromSku(it.sku) || classifyItem(it.name)
+      if (_cat === 'pratos') totalPratos += it.qty
+      else if (_cat === 'combos') totalPratos += comboPlateCount(it.sku) * it.qty   // expande pratos do combo (= Finanças)
     })
     totalPlatos += countPorcoes(o.items)
   })
@@ -2572,8 +2583,8 @@ function updateSummarySection() {
       </tbody>
     </table>`
 
-  // Ranking de pratos: sempre por SKU (mescla variantes), respeitando o filtro "Pratos"
-  const pratos = checked.includes('pratos') ? detalheProdData.filter(d => d.group === 'pratos') : []
+  // Ranking de pratos: por SKU (mescla variantes) + os pratos que vêm dentro dos combos (= Finanças)
+  const pratos = checked.includes('pratos') ? pratosComCombos() : []
   buildPratoDonut(pratos)
   renderCategoryBars(filtered)
 }
@@ -2589,6 +2600,28 @@ function toggleSumDetail(i) {
 }
 
 // Donut do RANKING DE PRATOS — por unidades (dados já mesclados por SKU)
+// Dados do donut de pratos: pratos à la carte + os pratos que vêm dentro dos combos vendidos.
+// Cada combo soma 1 unidade de cada prato componente (qtd do combo), sem mexer no faturamento.
+function pratosComCombos() {
+  const map = {}
+  ;(detalheProdData || []).filter(d => d.group === 'pratos').forEach(d => {
+    const k = String(d.sku || d.name).toUpperCase()
+    map[k] = { name: d.name, qty: d.qty, total: d.total, cost: d.cost }
+  })
+  ;(detalheProdData || []).filter(d => d.group === 'combos' && d.sku).forEach(d => {
+    const combo = prodCatalogBySku[String(d.sku).toUpperCase()]
+    if (!combo || !combo.components) return
+    String(combo.components).split('+').map(s => s.trim()).forEach(cs => {
+      if (categoryFromSku(cs) !== 'pratos') return
+      const k = cs.toUpperCase()
+      const comp = prodCatalogBySku[k]
+      if (!map[k]) map[k] = { name: (comp && comp.name) ? comp.name : cs, qty: 0, total: 0, cost: 0 }
+      map[k].qty += d.qty
+    })
+  })
+  return Object.values(map)
+}
+
 function buildPratoDonut(data) {
   const canvas = document.getElementById('detalheDonut')
   const centerEl = document.getElementById('detalheDonutCenter')
