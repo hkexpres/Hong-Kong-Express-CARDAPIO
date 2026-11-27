@@ -2641,7 +2641,11 @@ function buildPratoDonut(data) {
   const N = 10
   const items = sorted.slice(0, N).map(d => ({ name: d.name, qty: d.qty }))
   const rest  = sorted.slice(N)
-  if (rest.length) items.push({ name: `Outros (${rest.length})`, qty: rest.reduce((a, d) => a + d.qty, 0) })
+  if (rest.length) items.push({
+    name: `Outros (${rest.length})`,
+    qty: rest.reduce((a, d) => a + d.qty, 0),
+    detail: rest.map(d => `${d.name} (${d.qty})`)   // pratos agrupados em "Outros" → aparecem no hover
+  })
   const labels = items.map(d => d.name.length > 22 ? d.name.slice(0, 22) + '…' : d.name)
   const values = items.map(d => d.qty)
   const colors = items.map((_, i) => GROUP_COLORS[i % GROUP_COLORS.length])
@@ -2656,7 +2660,11 @@ function buildPratoDonut(data) {
       cutout: '65%',
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw} un (${Math.round(c.raw / totalQty * 100)}%)` } },
+        tooltip: { callbacks: { label: c => {
+          const it = items[c.dataIndex]
+          const base = ` ${c.label}: ${c.raw} un (${Math.round(c.raw / totalQty * 100)}%)`
+          return (it && it.detail) ? [base, ...it.detail.map(s => '  • ' + s)] : base
+        } } },
         datalabels: { color: '#000', font: { weight: 'bold', size: 10 }, formatter: v => { const p = Math.round(v / totalQty * 100); return p >= 6 ? p + '%' : '' } }
       }
     },
